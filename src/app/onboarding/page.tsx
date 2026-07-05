@@ -4,15 +4,25 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-const BELIEF_OPTIONS = [
-  "Horoscope",
-  "Crystals / energy",
-  "Science-based thinking",
+const BELIEF_TAGS = [
+  "Christianity",
+  "Islam",
+  "Judaism",
+  "Buddhism",
+  "Hinduism",
+  "Spirituality",
+  "Agnostic",
+  "Atheist",
+  "Science",
+  "Astrology",
+  "Crystals & energy",
+  "Karma",
+  "Manifestation",
+  "Meditation",
 ];
 
 type StepKey =
   | "name"
-  | "religion"
   | "beliefs"
   | "personality"
   | "handling_bad"
@@ -35,16 +45,9 @@ const STEPS: Step[] = [
     kind: "text",
   },
   {
-    key: "religion",
-    question: "What is your religion or belief system?",
-    hint: "Optional. Skip if you'd rather not say.",
-    optional: true,
-    kind: "text",
-  },
-  {
     key: "beliefs",
-    question: "Do you believe in things like…",
-    hint: "Pick any that feel true. Add your own below.",
+    question: "What do you believe in?",
+    hint: "Faith, science, energy — tap everything that resonates, or add your own.",
     optional: true,
     kind: "beliefs",
   },
@@ -77,7 +80,8 @@ export default function OnboardingPage() {
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [beliefPicks, setBeliefPicks] = useState<string[]>([]);
-  const [beliefOther, setBeliefOther] = useState("");
+  const [customBeliefs, setCustomBeliefs] = useState<string[]>([]);
+  const [beliefInput, setBeliefInput] = useState("");
   const [leaving, setLeaving] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -89,6 +93,13 @@ export default function OnboardingPage() {
     if (step.optional) return true;
     return value.trim().length > 0;
   }, [step, value]);
+
+  function addCustomBelief() {
+    const name = beliefInput.trim();
+    if (!name) return;
+    if (!customBeliefs.includes(name)) setCustomBeliefs((c) => [...c, name]);
+    setBeliefInput("");
+  }
 
   function advance() {
     if (index < STEPS.length - 1) {
@@ -115,9 +126,8 @@ export default function OnboardingPage() {
     }
 
     const beliefs = {
-      religion: answers.religion?.trim() || null,
-      believes_in: beliefPicks,
-      other: beliefOther.trim() || null,
+      selected: beliefPicks,
+      custom: customBeliefs,
     };
 
     const { error } = await supabase.from("profiles").upsert({
@@ -173,35 +183,64 @@ export default function OnboardingPage() {
             className="ink-input paper-lines mt-8 w-full resize-none"
           />
         ) : (
-          <div className="mt-8 flex flex-col gap-3">
-            {BELIEF_OPTIONS.map((opt) => {
-              const on = beliefPicks.includes(opt);
-              return (
+          <div className="scroll-area mt-8 min-h-0 flex-1">
+            <div className="flex flex-wrap gap-2">
+              {BELIEF_TAGS.map((tag) => {
+                const on = beliefPicks.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() =>
+                      setBeliefPicks((p) =>
+                        on ? p.filter((x) => x !== tag) : [...p, tag]
+                      )
+                    }
+                    className={`pressable rounded-full border px-4 py-2 text-sm transition-colors ${
+                      on
+                        ? "border-foreground bg-foreground text-ink"
+                        : "border-border text-muted"
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+              {customBeliefs.map((tag) => (
                 <button
-                  key={opt}
+                  key={tag}
                   type="button"
                   onClick={() =>
-                    setBeliefPicks((p) =>
-                      on ? p.filter((x) => x !== opt) : [...p, opt]
-                    )
+                    setCustomBeliefs((c) => c.filter((x) => x !== tag))
                   }
-                  className={`pressable rounded-2xl border px-5 py-3.5 text-left transition-colors ${
-                    on
-                      ? "border-foreground bg-foreground text-ink"
-                      : "border-border text-muted"
-                  }`}
+                  className="pressable rounded-full border border-foreground bg-foreground px-4 py-2 text-sm text-ink"
                 >
-                  {opt}
+                  {tag} ×
                 </button>
-              );
-            })}
-            <div className="write-line mt-3 pb-2">
+              ))}
+            </div>
+            <div className="write-line mt-6 flex items-center gap-2 pb-2">
               <input
-                value={beliefOther}
-                onChange={(e) => setBeliefOther(e.target.value)}
+                value={beliefInput}
+                onChange={(e) => setBeliefInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomBelief();
+                  }
+                }}
                 placeholder="Something else…"
                 className="ink-input w-full"
               />
+              {beliefInput.trim() && (
+                <button
+                  type="button"
+                  onClick={addCustomBelief}
+                  className="shrink-0 text-sm text-muted"
+                >
+                  Add
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -210,7 +249,7 @@ export default function OnboardingPage() {
       <div className="flex items-end justify-between pt-4">
         <p className="font-script text-2xl text-faint">{progress}%</p>
         <div className="flex items-center gap-5">
-          {step.optional && !value.trim() && step.kind === "text" && (
+          {step.optional && step.kind === "text" && !value.trim() && (
             <button
               type="button"
               onClick={advance}

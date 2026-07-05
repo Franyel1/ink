@@ -80,14 +80,3 @@ export interface Reflection {
   answer: string;
   created_at: string;
 }
-
-export const ACCENT_COLORS = [
-  "#F5F5F5",
-  "#9BB8D3",
-  "#B7C9A8",
-  "#D8B4A0",
-  "#C9A8C9",
-  "#D3C49B",
-  "#A8C9C4",
-  "#D39B9B",
-];

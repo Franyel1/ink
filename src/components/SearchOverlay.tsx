@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import type { Post, PostType, Tag } from "@/lib/types";
 import { POST_TYPES } from "@/lib/types";
-import PostCard from "@/components/PostCard";
+import PostCard, { type PostAuthor } from "@/components/PostCard";
 
 interface Props {
   open: boolean;
   posts: Post[];
   tags: Tag[];
+  author: PostAuthor;
   onClose: () => void;
   onEdit: (post: Post) => void;
   onDelete: (post: Post) => void;
@@ -19,6 +20,7 @@ export default function SearchOverlay({
   open,
   posts,
   tags,
+  author,
   onClose,
   onEdit,
   onDelete,
@@ -168,6 +170,7 @@ export default function SearchOverlay({
             <PostCard
               key={post.id}
               post={post}
+              author={author}
               onEdit={onEdit}
               onDelete={onDelete}
               onTogglePin={onTogglePin}

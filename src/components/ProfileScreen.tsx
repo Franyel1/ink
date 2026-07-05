@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+import Avatar from "@/components/Avatar";
 import { createClient } from "@/lib/supabase/client";
 import type { Post, Profile } from "@/lib/types";
-import { ACCENT_COLORS } from "@/lib/types";
 import { POST_SELECT, setPinned } from "@/lib/posts";
 import { formatPostTime } from "@/lib/dates";
 
@@ -99,17 +98,6 @@ export default function ProfileScreen() {
     setBusy(false);
   }
 
-  async function setColor(color: string) {
-    if (!profile) return;
-    setProfile({ ...profile, profile_color: color });
-    const supabase = createClient();
-    await supabase
-      .from("profiles")
-      .update({ profile_color: color, updated_at: new Date().toISOString() })
-      .eq("id", profile.id);
-    router.refresh();
-  }
-
   async function uploadAvatar(file: File | undefined) {
     if (!file || !profile) return;
     const supabase = createClient();
@@ -165,56 +153,35 @@ export default function ProfileScreen() {
     );
   }
 
-  const initial = (profile.display_name || "I").trim().charAt(0).toUpperCase();
-  const accent = profile.profile_color || "#F5F5F5";
-
   return (
     <div className="scroll-area flex-1 pb-10">
       {/* Header */}
       <div className="flex flex-col items-center px-6 pt-[calc(var(--safe-top)+2.5rem)]">
-        <label className="pressable relative h-24 w-24 cursor-pointer overflow-hidden rounded-full border border-border">
-          {profile.profile_picture_url ? (
-            <Image
-              src={profile.profile_picture_url}
-              alt="Profile picture"
-              fill
-              sizes="96px"
-              className="object-cover"
-            />
-          ) : (
-            <span
-              className="flex h-full w-full items-center justify-center font-script text-5xl"
-              style={{ color: accent }}
-            >
-              {initial}
-            </span>
-          )}
+        <label className="pressable relative cursor-pointer">
+          <Avatar
+            name={profile.display_name}
+            url={profile.profile_picture_url}
+            size={96}
+          />
           <input
             type="file"
             accept="image/*"
             hidden
             onChange={(e) => uploadAvatar(e.target.files?.[0])}
           />
+          <span className="absolute -bottom-0.5 -right-0.5 rounded-full border border-border bg-surface-raised p-1.5 text-muted">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M16.5 3.9a2.1 2.1 0 013 3L8 18.4l-4 1 1-4L16.5 3.9z"
+              />
+            </svg>
+          </span>
         </label>
-        <h1 className="mt-4 font-script text-4xl" style={{ color: accent }}>
+        <h1 className="mt-4 font-script text-4xl">
           {profile.display_name || "Unnamed"}
         </h1>
-
-        {/* Accent color */}
-        <div className="mt-5 flex gap-2.5">
-          {ACCENT_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              aria-label={`Accent ${c}`}
-              onClick={() => setColor(c)}
-              className={`h-6 w-6 rounded-full border transition-transform ${
-                accent === c ? "scale-110 border-foreground" : "border-border"
-              }`}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-        </div>
       </div>
 
       {/* Section switch */}
@@ -281,8 +248,7 @@ export default function ProfileScreen() {
                         type="button"
                         disabled={busy}
                         onClick={saveEdit}
-                        className="text-sm font-medium disabled:opacity-40"
-                        style={{ color: accent }}
+                        className="text-sm font-medium text-foreground disabled:opacity-40"
                       >
                         Save
                       </button>

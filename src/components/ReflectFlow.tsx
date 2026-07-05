@@ -4,13 +4,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { REFLECT_QUESTIONS } from "@/lib/reflectQuestions";
 import type { Reflection } from "@/lib/types";
+import { useKeyboardInset } from "@/lib/useKeyboardInset";
 
+/**
+ * One continuous journal page: answered questions stack above and stay
+ * visible; each entry gets its own layout so the page grows into a
+ * collage of ink rather than a form.
+ */
 export default function ReflectFlow() {
   const [saved, setSaved] = useState<Record<string, Reflection> | null>(null);
   const [draft, setDraft] = useState("");
   const [absorbing, setAbsorbing] = useState(false);
   const [error, setError] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  const keyboardInset = useKeyboardInset();
 
   useEffect(() => {
     const supabase = createClient();
@@ -25,34 +32,30 @@ export default function ReflectFlow() {
       .catch(() => setSaved({}));
   }, []);
 
-  const answeredCount = useMemo(
-    () =>
-      saved
-        ? REFLECT_QUESTIONS.filter((q) => saved[q.key]).length
-        : 0,
+  const answered = useMemo(
+    () => (saved ? REFLECT_QUESTIONS.filter((q) => saved[q.key]) : []),
     [saved]
   );
-
   const current = useMemo(
     () => (saved ? REFLECT_QUESTIONS.find((q) => !saved[q.key]) ?? null : null),
     [saved]
   );
-
-  // Colors invert with every answered page: even = ink on black, odd = ink on paper
-  const inverted = answeredCount % 2 === 1;
   const done = saved !== null && current === null;
-  const progress = Math.round((answeredCount / REFLECT_QUESTIONS.length) * 100);
-
-  // Ghosted previous answers become part of the background
-  const ghosts = useMemo(
-    () =>
-      REFLECT_QUESTIONS.filter((q) => saved?.[q.key]).slice(-4).map((q) => ({
-        key: q.key,
-        question: q.question,
-        answer: saved![q.key].answer,
-      })),
-    [saved]
+  const progress = Math.round(
+    (answered.length / REFLECT_QUESTIONS.length) * 100
   );
+
+  // Bring each new question to the top of the page as it appears
+  const answeredCount = answered.length;
+  const loaded = saved !== null;
+  useEffect(() => {
+    const t = setTimeout(
+      () =>
+        endRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      120
+    );
+    return () => clearTimeout(t);
+  }, [answeredCount, loaded]);
 
   async function absorb() {
     const answer = draft.trim();
@@ -86,120 +89,179 @@ export default function ReflectFlow() {
       return;
     }
 
-    // Let the page absorb the answer, then flip
     setTimeout(() => {
       setSaved((s) => ({ ...(s ?? {}), [current.key]: data as Reflection }));
       setDraft("");
       setAbsorbing(false);
-    }, 650);
+    }, 450);
   }
 
-  const bg = inverted ? "var(--paper)" : "var(--background)";
-  const fg = inverted ? "var(--ink)" : "var(--foreground)";
-  const faint = inverted ? "rgba(9,9,9,0.35)" : "var(--faint)";
-  const lineColor = inverted ? "rgba(9,9,9,0.14)" : "var(--line)";
-
   return (
-    <div
-      className="invert-surface grain relative flex min-h-0 flex-1 flex-col overflow-hidden"
-      style={{ backgroundColor: bg, color: fg }}
-    >
-      {/* Ghosted ink from previous answers, absorbed into the page */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden px-8 pt-[calc(var(--safe-top)+4rem)]"
-        style={{ opacity: 0.1, filter: "blur(0.6px)" }}
-      >
-        {ghosts.map((g, i) => (
-          <div key={g.key} className="mb-8" style={{ transform: `rotate(${(i % 2 ? 1 : -1) * 0.8}deg)` }}>
-            <p className="text-xs uppercase tracking-widest">{g.question}</p>
-            <p className="font-script mt-1 text-2xl leading-snug">{g.answer}</p>
-          </div>
-        ))}
+    <div className="grain relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Slim progress, always visible */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-background via-background/95 to-transparent px-6 pb-8 pt-[calc(var(--safe-top)+0.9rem)]">
+        <div className="flex items-baseline justify-between">
+          <span className="font-script text-2xl text-muted">Reflect</span>
+          <span className="font-script text-xl text-faint">{progress}%</span>
+        </div>
+        <div className="mt-1.5 h-px w-full bg-border/60">
+          <div
+            className="h-full bg-foreground transition-all duration-700"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
       </div>
 
-      <div className="relative flex min-h-0 flex-1 flex-col px-8 pb-4 pt-[calc(var(--safe-top)+3rem)]">
+      <div
+        className="scroll-area flex-1 px-6 pt-[calc(var(--safe-top)+6.75rem)]"
+        style={{ paddingBottom: keyboardInset ? keyboardInset + 16 : 32 }}
+      >
         {saved === null ? (
-          <div className="flex flex-1 items-center justify-center">
-            <span className="font-script text-2xl" style={{ color: faint }}>
-              …
-            </span>
-          </div>
-        ) : done ? (
-          <div className="rise-in flex flex-1 flex-col items-center justify-center text-center">
-            <p className="font-script text-6xl">100%</p>
-            <p className="mt-4 max-w-xs text-sm" style={{ color: faint }}>
-              Every page has been absorbed. Your answers live in the ink now —
-              more questions will find you here later.
-            </p>
+          <div className="flex h-40 items-center justify-center">
+            <span className="font-script text-2xl text-faint">…</span>
           </div>
         ) : (
-          <div
-            key={current!.key}
-            className={`flex min-h-0 flex-1 flex-col transition-all duration-500 ${
-              absorbing ? "scale-[0.98] opacity-0" : "rise-in"
-            }`}
-          >
-            <p
-              className="text-xs uppercase tracking-[0.25em]"
-              style={{ color: faint }}
-            >
-              Reflection {answeredCount + 1} of {REFLECT_QUESTIONS.length}
-            </p>
-            <h1 className="ink-reveal mt-6 text-[26px] font-medium leading-snug">
-              {current!.question}
-            </h1>
+          <>
+            {/* The page so far */}
+            {answered.map((q, i) => (
+              <AnsweredEntry
+                key={q.key}
+                index={i}
+                question={q.question}
+                answer={saved[q.key].answer}
+              />
+            ))}
 
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Write it in ink…"
-              className="ink-input mt-10 w-full flex-1 resize-none"
-              style={{
-                backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent calc(2em - 1px), ${lineColor} calc(2em - 1px), ${lineColor} 2em)`,
-                lineHeight: "2em",
-                color: fg,
-                caretColor: fg,
-              }}
-            />
-            {error && (
-              <p className="mt-2 text-sm text-red-400/80">
-                The ink didn&apos;t take. Try again.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Progress + action */}
-        {!done && saved !== null && (
-          <div className="flex shrink-0 items-end justify-between pb-2 pt-4">
-            <div>
-              <p className="font-script text-3xl" style={{ color: faint }}>
-                {progress}%
-              </p>
+            {/* The active question */}
+            {current && (
               <div
-                className="mt-1 h-px w-24 overflow-hidden"
-                style={{ backgroundColor: lineColor }}
+                key={current.key}
+                className={`pb-6 transition-all duration-500 ${
+                  absorbing ? "opacity-40" : "rise-in"
+                } ${answered.length > 0 ? "mt-10" : "mt-2"}`}
               >
-                <div
-                  className="h-full transition-all duration-700"
-                  style={{ width: `${progress}%`, backgroundColor: fg }}
-                />
+                <p className="text-xs uppercase tracking-[0.25em] text-faint">
+                  {answered.length + 1} · {REFLECT_QUESTIONS.length}
+                </p>
+                <h2 className="ink-reveal mt-3 text-[22px] font-medium leading-snug">
+                  {current.question}
+                </h2>
+
+                {/* The box where the answer belongs */}
+                <div className="rise-in mt-5 rounded-2xl border border-dashed border-border/90 p-4 focus-within:border-muted">
+                  <textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onFocus={(e) =>
+                      e.target.scrollIntoView({ block: "nearest" })
+                    }
+                    placeholder="Write it in ink…"
+                    rows={4}
+                    className="ink-input paper-lines w-full resize-none"
+                  />
+                  <div className="mt-2 flex items-center justify-between">
+                    {error ? (
+                      <p className="text-xs text-red-400/80">
+                        The ink didn&apos;t take. Try again.
+                      </p>
+                    ) : (
+                      <span />
+                    )}
+                    <button
+                      type="button"
+                      disabled={!draft.trim() || absorbing}
+                      onClick={absorb}
+                      className="pressable rounded-full bg-foreground px-5 py-2 text-sm font-medium text-ink transition-opacity disabled:opacity-25"
+                    >
+                      {absorbing ? "…" : "Absorb"}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-            <button
-              type="button"
-              disabled={!draft.trim() || absorbing}
-              onClick={absorb}
-              className="pressable rounded-full px-7 py-3 font-medium transition-opacity disabled:opacity-30"
-              style={{ backgroundColor: fg, color: bg }}
-            >
-              {absorbing ? "Absorbing…" : "Absorb"}
-            </button>
-          </div>
+            )}
+
+            {done && (
+              <div className="rise-in border-t border-border/50 py-14 text-center">
+                <p className="font-script text-6xl">100%</p>
+                <p className="mx-auto mt-4 max-w-xs text-sm text-faint">
+                  The page is full — for now. Everything you wrote lives here,
+                  and new questions will find you later.
+                </p>
+              </div>
+            )}
+
+            <div ref={endRef} />
+          </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Layout variants so every answered entry settles differently on the page. */
+function AnsweredEntry({
+  index,
+  question,
+  answer,
+}: {
+  index: number;
+  question: string;
+  answer: string;
+}) {
+  const variant = index % 4;
+  const rotate = [(index % 3) - 1, 1 - (index % 3)][index % 2] * 0.6;
+
+  if (variant === 1) {
+    // pushed to the right, quiet and light
+    return (
+      <div
+        className="mb-10 ml-auto w-[88%] text-right"
+        style={{ transform: `rotate(${rotate}deg)` }}
+      >
+        <p className="text-sm italic text-muted">{question}</p>
+        <p data-selectable className="mt-2 whitespace-pre-wrap text-lg font-light leading-relaxed text-foreground/85">
+          {answer}
+        </p>
+      </div>
+    );
+  }
+
+  if (variant === 2) {
+    // inverted paper card — a page absorbed in white
+    return (
+      <div
+        className="mb-10 rounded-2xl bg-paper p-5 text-ink shadow-lg shadow-black/40"
+        style={{ transform: `rotate(${rotate}deg)` }}
+      >
+        <p className="font-script text-lg text-ink/60">{question}</p>
+        <p data-selectable className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed">
+          {answer}
+        </p>
+      </div>
+    );
+  }
+
+  if (variant === 3) {
+    // centered, answer as large script between hairlines
+    return (
+      <div className="mb-10 border-y border-border/40 py-6 text-center">
+        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+          {question}
+        </p>
+        <p data-selectable className="font-script mt-3 whitespace-pre-wrap text-2xl leading-snug text-foreground/90">
+          {answer}
+        </p>
+      </div>
+    );
+  }
+
+  // default: left, script answer under a small label
+  return (
+    <div className="mb-10 w-[92%]" style={{ transform: `rotate(${rotate}deg)` }}>
+      <p className="text-xs uppercase tracking-[0.2em] text-faint">{question}</p>
+      <p data-selectable className="font-script mt-2 whitespace-pre-wrap text-[26px] leading-snug text-foreground/90">
+        {answer}
+      </p>
     </div>
   );
 }

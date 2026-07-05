@@ -3,13 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Post, Tag } from "@/lib/types";
 import { fetchPosts, fetchTags, deletePost, setPinned } from "@/lib/posts";
-import PostCard from "@/components/PostCard";
+import { createClient } from "@/lib/supabase/client";
+import PostCard, { type PostAuthor } from "@/components/PostCard";
 import Composer from "@/components/Composer";
 import SearchOverlay from "@/components/SearchOverlay";
 
 export default function FeedScreen() {
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [author, setAuthor] = useState<PostAuthor>({
+    name: null,
+    avatarUrl: null,
+  });
   const [composerOpen, setComposerOpen] = useState(false);
   const [editing, setEditing] = useState<Post | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -17,11 +22,26 @@ export default function FeedScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchPosts(), fetchTags()])
-      .then(([p, t]) => {
+    const supabase = createClient();
+    const loadAuthor = supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("display_name, profile_picture_url")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data;
+    });
+    Promise.all([fetchPosts(), fetchTags(), loadAuthor])
+      .then(([p, t, prof]) => {
         if (cancelled) return;
         setPosts(p);
         setTags(t);
+        if (prof)
+          setAuthor({
+            name: prof.display_name,
+            avatarUrl: prof.profile_picture_url,
+          });
       })
       .catch(() => !cancelled && setLoadError(true));
     return () => {
@@ -111,6 +131,7 @@ export default function FeedScreen() {
           <PostCard
             key={post.id}
             post={post}
+            author={author}
             onEdit={handleEdit}
             onDelete={handleDelete}
             onTogglePin={handleTogglePin}
@@ -141,6 +162,7 @@ export default function FeedScreen() {
         open={searchOpen}
         posts={posts ?? []}
         tags={tags}
+        author={author}
         onClose={() => setSearchOpen(false)}
         onEdit={handleEdit}
         onDelete={handleDelete}
@@ -152,6 +174,7 @@ export default function FeedScreen() {
           key={editing?.id ?? "new"}
           editing={editing}
           tags={tags}
+          author={author}
           onClose={() => {
             setComposerOpen(false);
             setEditing(null);

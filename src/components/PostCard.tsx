@@ -4,35 +4,33 @@ import { useState } from "react";
 import Image from "next/image";
 import type { Post } from "@/lib/types";
 import { formatPostTime } from "@/lib/dates";
+import Avatar from "@/components/Avatar";
+
+export interface PostAuthor {
+  name: string | null;
+  avatarUrl: string | null;
+}
 
 interface Props {
   post: Post;
+  author: PostAuthor;
   onEdit: (post: Post) => void;
   onDelete: (post: Post) => void;
   onTogglePin: (post: Post) => void;
 }
 
-export default function PostCard({ post, onEdit, onDelete, onTogglePin }: Props) {
+export default function PostCard({
+  post,
+  author,
+  onEdit,
+  onDelete,
+  onTogglePin,
+}: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const hasImages = post.post_images.length > 0;
   const tags = post.post_tags.map((pt) => pt.tags).filter(Boolean);
-
-  const meta = (
-    <div className="flex items-center gap-2 text-xs text-faint">
-      {post.is_pinned && (
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3 text-muted">
-          <path d="M16 3l5 5-5.5 1.5L12 13l-1 5-2.5-2.5L4 20l-1-1 4.5-4.5L5 12l3.5-3.5L10 3l6 0z" />
-        </svg>
-      )}
-      {post.post_type !== "thought" && (
-        <span className="font-script text-sm capitalize text-muted">
-          {post.post_type}
-        </span>
-      )}
-      <span>{formatPostTime(post.created_at)}</span>
-    </div>
-  );
+  const name = author.name || "You";
 
   const menu = (
     <div className="relative shrink-0">
@@ -100,6 +98,21 @@ export default function PostCard({ post, onEdit, onDelete, onTogglePin }: Props)
     </div>
   );
 
+  const badges = (
+    <span className="flex items-center gap-1.5">
+      {post.is_pinned && (
+        <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3 text-muted">
+          <path d="M16 3l5 5-5.5 1.5L12 13l-1 5-2.5-2.5L4 20l-1-1 4.5-4.5L5 12l3.5-3.5L10 3l6 0z" />
+        </svg>
+      )}
+      {post.post_type !== "thought" && (
+        <span className="font-script text-sm capitalize text-muted">
+          {post.post_type}
+        </span>
+      )}
+    </span>
+  );
+
   const tagRow = tags.length > 0 && (
     <div className="mt-2 flex flex-wrap gap-1.5">
       {tags.map((tag) => (
@@ -116,48 +129,65 @@ export default function PostCard({ post, onEdit, onDelete, onTogglePin }: Props)
   if (!hasImages) {
     // Text-only: compact, Twitter-like
     return (
-      <article className="border-b border-border/60 px-5 py-4">
-        <div className="flex items-start justify-between gap-3">
-          {meta}
-          {menu}
+      <article className="flex gap-3 border-b border-border/60 px-4 py-3.5">
+        <Avatar name={author.name} url={author.avatarUrl} size={38} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 text-sm">
+              <span className="truncate font-semibold">{name}</span>
+              <span className="shrink-0 text-xs text-faint">
+                {formatPostTime(post.created_at)}
+              </span>
+              {badges}
+            </div>
+            {menu}
+          </div>
+          <p
+            data-selectable
+            className="mt-0.5 whitespace-pre-wrap text-[15px] leading-relaxed"
+          >
+            {post.content}
+          </p>
+          {tagRow}
         </div>
-        <p
-          data-selectable
-          className="mt-1.5 whitespace-pre-wrap text-[15px] leading-relaxed"
-        >
-          {post.content}
-        </p>
-        {tagRow}
       </article>
     );
   }
 
   // With images: large image(s), caption below, Instagram-like
   return (
-    <article className="border-b border-border/60 py-4">
-      <div className="flex items-start justify-between gap-3 px-5">
-        {meta}
+    <article className="border-b border-border/60 py-3">
+      <div className="flex items-center justify-between gap-2 px-4 pb-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Avatar name={author.name} url={author.avatarUrl} size={32} />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight">{name}</p>
+            <p className="flex items-center gap-1.5 text-xs leading-tight text-faint">
+              {formatPostTime(post.created_at)} {badges}
+            </p>
+          </div>
+        </div>
         {menu}
       </div>
       <div
-        className={`mt-3 ${
+        className={
           post.post_images.length > 1
-            ? "scroll-x flex snap-x snap-mandatory gap-2 px-5"
-            : "px-5"
-        }`}
+            ? "scroll-x flex snap-x snap-mandatory gap-1.5"
+            : ""
+        }
       >
         {post.post_images.map((img) => (
           <div
             key={img.id}
-            className={`relative shrink-0 snap-center overflow-hidden rounded-2xl bg-surface ${
-              post.post_images.length > 1 ? "w-[85%]" : "w-full"
+            className={`relative shrink-0 snap-center overflow-hidden bg-surface ${
+              post.post_images.length > 1 ? "w-[88%] first:ml-0" : "w-full"
             } aspect-[4/5]`}
           >
             <Image
               src={img.image_url}
               alt=""
               fill
-              sizes="(max-width: 640px) 90vw, 500px"
+              sizes="(max-width: 640px) 95vw, 500px"
               className="object-cover"
             />
           </div>
@@ -166,12 +196,12 @@ export default function PostCard({ post, onEdit, onDelete, onTogglePin }: Props)
       {post.content && (
         <p
           data-selectable
-          className="mt-3 whitespace-pre-wrap px-5 text-sm leading-relaxed text-foreground/90"
+          className="mt-2.5 whitespace-pre-wrap px-4 text-sm leading-relaxed text-foreground/90"
         >
           {post.content}
         </p>
       )}
-      <div className="px-5">{tagRow}</div>
+      <div className="px-4">{tagRow}</div>
     </article>
   );
 }

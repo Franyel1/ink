@@ -7,10 +7,17 @@ import type { Post, PostType, Tag } from "@/lib/types";
 import { POST_TYPES } from "@/lib/types";
 import { createPost, updatePost, createTag, type PostInput } from "@/lib/posts";
 import { useKeyboardInset } from "@/lib/useKeyboardInset";
+import Avatar from "@/components/Avatar";
+
+interface Author {
+  name: string | null;
+  avatarUrl: string | null;
+}
 
 interface Props {
   editing: Post | null;
   tags: Tag[];
+  author: Author;
   onClose: () => void;
   onSaved: (post: Post, isEdit: boolean) => void;
   onTagCreated: (tag: Tag) => void;
@@ -21,11 +28,14 @@ interface PendingFile {
   url: string;
 }
 
+type Picker = "none" | "type" | "tags";
+
 // Mounted only while open (keyed by the post being edited), so state
 // initializes straight from props.
 export default function Composer({
   editing,
   tags,
+  author,
   onClose,
   onSaved,
   onTagCreated,
@@ -38,7 +48,7 @@ export default function Composer({
     editing?.post_tags.map((pt) => pt.tag_id) ?? []
   );
   const [files, setFiles] = useState<PendingFile[]>([]);
-  const [showExtras, setShowExtras] = useState(false);
+  const [picker, setPicker] = useState<Picker>("none");
   const [newTag, setNewTag] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,8 +57,7 @@ export default function Composer({
   const keyboardInset = useKeyboardInset();
 
   useEffect(() => {
-    // Focus after the sheet slides in
-    const t = setTimeout(() => textareaRef.current?.focus(), 350);
+    const t = setTimeout(() => textareaRef.current?.focus(), 250);
     return () => clearTimeout(t);
   }, []);
 
@@ -61,7 +70,7 @@ export default function Composer({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "0px";
-    el.style.height = Math.min(el.scrollHeight, 240) + "px";
+    el.style.height = el.scrollHeight + "px";
   }
 
   useEffect(autoresize, [content]);
@@ -114,197 +123,246 @@ export default function Composer({
   if (typeof document === "undefined") return null;
 
   const canPost = content.trim().length > 0 || files.length > 0;
+  const selectedTags = tags.filter((t) => tagIds.includes(t.id));
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
-      <button
-        type="button"
-        aria-label="Close composer"
-        onClick={onClose}
-        className="fade-in absolute inset-0 bg-black/60 backdrop-blur-[2px]"
-      />
-      <div
-        className="sheet-up relative flex max-h-[calc(100dvh-var(--safe-top)-2rem)] flex-col rounded-t-3xl border-t border-border bg-surface"
-        style={{ paddingBottom: keyboardInset || undefined }}
-      >
-        <div className="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-border" />
+    <div
+      className="fade-in fixed inset-0 z-50 flex flex-col bg-background"
+      style={{ paddingBottom: keyboardInset || undefined }}
+    >
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-[calc(var(--safe-top)+0.65rem)]">
+        <button
+          type="button"
+          onClick={onClose}
+          className="pressable px-2 py-1.5 text-[15px] text-muted"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!canPost || busy}
+          onClick={submit}
+          className="pressable rounded-full bg-foreground px-5 py-1.5 text-[15px] font-semibold text-ink disabled:opacity-30"
+        >
+          {busy ? "…" : editing ? "Save" : "Post"}
+        </button>
+      </div>
 
-        <div className="flex items-center justify-between px-5 pt-3">
-          <button type="button" onClick={onClose} className="py-1 text-sm text-muted">
-            Cancel
-          </button>
-          <span className="font-script text-xl text-muted">
-            {editing ? "Edit" : "Ink."}
-          </span>
-          <button
-            type="button"
-            disabled={!canPost || busy}
-            onClick={submit}
-            className="pressable rounded-full bg-foreground px-5 py-1.5 text-sm font-semibold text-ink disabled:opacity-30"
-          >
-            {busy ? "…" : editing ? "Save" : "Post"}
-          </button>
-        </div>
-
-        <div className="scroll-area flex-1 px-5 pb-[calc(var(--safe-bottom)+1rem)] pt-4">
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onFocus={() => textareaRef.current?.scrollIntoView({ block: "nearest" })}
-            placeholder="What's on your mind?"
-            rows={3}
-            className="ink-input w-full resize-none text-[17px] leading-relaxed"
-          />
-
-          {files.length > 0 && (
-            <div className="scroll-x -mx-1 mt-2 flex gap-2 px-1">
-              {files.map((f, i) => (
-                <div
-                  key={f.url}
-                  className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={f.url} alt="" className="h-full w-full object-cover" />
-                  <button
-                    type="button"
-                    aria-label="Remove image"
-                    onClick={() =>
-                      setFiles((all) => {
-                        URL.revokeObjectURL(f.url);
-                        return all.filter((_, j) => j !== i);
-                      })
-                    }
-                    className="absolute right-1 top-1 rounded-full bg-black/70 p-1"
-                  >
-                    <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" fill="none" className="h-3 w-3">
-                      <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {editing && editing.post_images.length > 0 && (
-            <div className="scroll-x -mx-1 mt-2 flex gap-2 px-1">
-              {editing.post_images.map((img) => (
-                <div
-                  key={img.id}
-                  className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl opacity-70"
-                >
-                  <Image src={img.image_url} alt="" fill sizes="96px" className="object-cover" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {error && <p className="mt-3 text-sm text-red-300/80">{error}</p>}
-
-          <div className="mt-4 flex items-center gap-4 border-t border-border/60 pt-3">
-            <button
-              type="button"
-              aria-label="Add photos"
-              onClick={() => fileInputRef.current?.click()}
-              className="pressable text-muted"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6">
-                <rect x="3" y="5" width="18" height="14" rx="3" />
-                <circle cx="9" cy="10" r="1.5" />
-                <path strokeLinecap="round" d="M5 17l4.5-4.5a1.5 1.5 0 012.1 0L18 19" />
-              </svg>
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-              onChange={(e) => {
-                pickFiles(e.target.files);
-                e.target.value = "";
-              }}
+      {/* Writing surface */}
+      <div className="scroll-area flex-1 px-4 pt-2">
+        <div className="flex gap-3">
+          <Avatar name={author.name} url={author.avatarUrl} size={38} />
+          <div className="min-w-0 flex-1 pt-1.5">
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              onFocus={() =>
+                textareaRef.current?.scrollIntoView({ block: "nearest" })
+              }
+              placeholder="What's on your mind?"
+              rows={4}
+              className="ink-input w-full resize-none text-[17px] leading-relaxed"
             />
-            <button
-              type="button"
-              onClick={() => setShowExtras((v) => !v)}
-              className={`pressable text-sm ${showExtras ? "text-foreground" : "text-muted"}`}
-            >
-              <span className="font-script text-lg capitalize">{postType}</span>
-              {tagIds.length > 0 && (
-                <span className="ml-2 text-xs text-faint">
-                  {tagIds.length} tag{tagIds.length > 1 ? "s" : ""}
-                </span>
-              )}
-            </button>
-          </div>
 
-          {showExtras && (
-            <div className="fade-in mt-4">
-              <p className="text-xs uppercase tracking-widest text-faint">Type</p>
-              <div className="scroll-x -mx-5 mt-2 flex gap-2 px-5">
-                {POST_TYPES.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setPostType(t)}
-                    className={`shrink-0 rounded-full border px-4 py-1.5 text-sm capitalize transition-colors ${
-                      postType === t
-                        ? "border-foreground bg-foreground text-ink"
-                        : "border-border text-muted"
+            {files.length > 0 && (
+              <div
+                className={`mt-2 grid gap-2 ${
+                  files.length === 1 ? "grid-cols-1" : "grid-cols-2"
+                }`}
+              >
+                {files.map((f, i) => (
+                  <div
+                    key={f.url}
+                    className={`relative overflow-hidden rounded-2xl border border-border/60 ${
+                      files.length === 1 ? "aspect-[4/3]" : "aspect-square"
                     }`}
                   >
-                    {t}
-                  </button>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={f.url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      aria-label="Remove image"
+                      onClick={() =>
+                        setFiles((all) => {
+                          URL.revokeObjectURL(f.url);
+                          return all.filter((_, j) => j !== i);
+                        })
+                      }
+                      className="absolute right-2 top-2 rounded-full bg-black/70 p-1.5"
+                    >
+                      <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" fill="none" className="h-3.5 w-3.5">
+                        <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                      </svg>
+                    </button>
+                  </div>
                 ))}
               </div>
+            )}
 
-              <p className="mt-5 text-xs uppercase tracking-widest text-faint">Tags</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {tags.map((tag) => {
-                  const on = tagIds.includes(tag.id);
-                  return (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() =>
-                        setTagIds((ids) =>
-                          on ? ids.filter((x) => x !== tag.id) : [...ids, tag.id]
-                        )
-                      }
-                      className={`rounded-full border px-3.5 py-1 text-sm transition-colors ${
-                        on
-                          ? "border-foreground bg-foreground text-ink"
-                          : "border-border text-muted"
-                      }`}
-                    >
-                      {tag.name}
-                    </button>
-                  );
-                })}
-                <span className="write-line inline-flex items-center gap-1 pb-0.5">
-                  <input
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addTag();
-                      }
-                    }}
-                    placeholder="New tag…"
-                    className="ink-input w-24 text-sm"
-                  />
-                  {newTag.trim() && (
-                    <button type="button" onClick={addTag} className="text-sm text-muted">
-                      Add
-                    </button>
-                  )}
-                </span>
+            {editing && editing.post_images.length > 0 && (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {editing.post_images.map((img) => (
+                  <div
+                    key={img.id}
+                    className="relative aspect-square overflow-hidden rounded-2xl opacity-70"
+                  >
+                    <Image src={img.image_url} alt="" fill sizes="200px" className="object-cover" />
+                  </div>
+                ))}
               </div>
-            </div>
-          )}
+            )}
+
+            {selectedTags.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {selectedTags.map((tag) => (
+                  <span
+                    key={tag.id}
+                    className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted"
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {error && <p className="mt-3 text-sm text-red-300/80">{error}</p>}
+          </div>
         </div>
+      </div>
+
+      {/* Picker panel (sits directly above the toolbar / keyboard) */}
+      {picker === "type" && (
+        <div className="fade-in scroll-x flex shrink-0 gap-2 border-t border-border/50 px-4 py-3">
+          {POST_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => {
+                setPostType(t);
+                setPicker("none");
+              }}
+              className={`shrink-0 rounded-full border px-4 py-1.5 text-sm capitalize transition-colors ${
+                postType === t
+                  ? "border-foreground bg-foreground text-ink"
+                  : "border-border text-muted"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+      {picker === "tags" && (
+        <div className="fade-in scroll-x flex shrink-0 items-center gap-2 border-t border-border/50 px-4 py-3">
+          {tags.map((tag) => {
+            const on = tagIds.includes(tag.id);
+            return (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() =>
+                  setTagIds((ids) =>
+                    on ? ids.filter((x) => x !== tag.id) : [...ids, tag.id]
+                  )
+                }
+                className={`shrink-0 rounded-full border px-4 py-1.5 text-sm transition-colors ${
+                  on
+                    ? "border-foreground bg-foreground text-ink"
+                    : "border-border text-muted"
+                }`}
+              >
+                {tag.name}
+              </button>
+            );
+          })}
+          <span className="write-line inline-flex shrink-0 items-center gap-1 pb-0.5">
+            <input
+              value={newTag}
+              onChange={(e) => setNewTag(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addTag();
+                }
+              }}
+              placeholder="New tag…"
+              className="ink-input w-24 text-sm"
+            />
+            {newTag.trim() && (
+              <button type="button" onClick={addTag} className="text-sm text-muted">
+                Add
+              </button>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* Toolbar — pinned above the keyboard */}
+      <div
+        className="flex shrink-0 items-center gap-1 border-t border-border px-3 py-2"
+        style={{
+          paddingBottom: keyboardInset
+            ? undefined
+            : "calc(var(--safe-bottom) + 0.5rem)",
+        }}
+      >
+        <button
+          type="button"
+          aria-label="Add photos"
+          onClick={() => fileInputRef.current?.click()}
+          className="pressable rounded-full p-2.5 text-muted"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-[22px] w-[22px]">
+            <rect x="3" y="5" width="18" height="14" rx="3" />
+            <circle cx="9" cy="10" r="1.5" />
+            <path strokeLinecap="round" d="M5 17l4.5-4.5a1.5 1.5 0 012.1 0L18 19" />
+          </svg>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(e) => {
+            pickFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          aria-label="Tags"
+          onClick={() => setPicker(picker === "tags" ? "none" : "tags")}
+          className={`pressable relative rounded-full p-2.5 ${
+            picker === "tags" || tagIds.length > 0 ? "text-foreground" : "text-muted"
+          }`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-[22px] w-[22px]">
+            <path strokeLinecap="round" d="M9 4L7 20M17 4l-2 16M4.5 9h16M3.5 15h16" />
+          </svg>
+          {tagIds.length > 0 && (
+            <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-ink">
+              {tagIds.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setPicker(picker === "type" ? "none" : "type")}
+          className={`pressable ml-1 rounded-full border px-3.5 py-1 font-script text-lg capitalize leading-snug ${
+            picker === "type"
+              ? "border-foreground text-foreground"
+              : "border-border text-muted"
+          }`}
+        >
+          {postType}
+        </button>
       </div>
     </div>,
     document.body

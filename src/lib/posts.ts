@@ -80,6 +80,13 @@ export async function createPost(input: PostInput): Promise<Post> {
     if (tagError) throw tagError;
   }
 
+  // Hand the post to the AI layer in the background; posting never waits on it.
+  void fetch("/api/posts/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ postId: post.id }),
+  }).catch(() => {});
+
   return refetchPost(post.id);
 }
 

@@ -70,6 +70,11 @@ export interface Post {
   updated_at: string;
   post_images: PostImage[];
   post_tags: { tag_id: string; tags: Tag }[];
+  ai_processed: boolean | null;
+  ai_comment: string | null;
+  ai_summary: string | null;
+  ai_sentiment: "positive" | "negative" | "mixed" | "neutral" | null;
+  ai_topics: string[] | null;
 }
 
 export interface Reflection {

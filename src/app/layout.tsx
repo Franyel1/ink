@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "black",
     title: "Ink.",
   },
   icons: {
@@ -42,7 +42,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geistSans.variable} ${caveat.variable}`}>
-      <body>
+      <body suppressHydrationWarning>
         <div id="app-shell">{children}</div>
       </body>
     </html>

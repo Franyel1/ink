@@ -13,6 +13,7 @@ create table if not exists public.profiles (
   handling_good text,
   handling_bad text,
   improvement_goal text,
+  notebook_memory text,
   onboarded boolean default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
@@ -29,6 +30,7 @@ create table if not exists public.posts (
   updated_at timestamptz default now(),
   ai_processed boolean default false,
   ai_summary text,
+  ai_comment text,
   ai_sentiment text,
   ai_topics jsonb,
   ai_embedding_status text default 'not_processed'
@@ -66,6 +68,17 @@ create table if not exists public.profile_changes (
   created_at timestamptz default now()
 );
 
+-- AI-generated reflection questions
+create table if not exists public.reflect_questions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) not null,
+  question_key text not null,
+  question text not null,
+  source text default 'ai',
+  created_at timestamptz default now(),
+  unique (user_id, question_key)
+);
+
 -- Reflect tab answers
 create table if not exists public.reflections (
   id uuid primary key default gen_random_uuid(),
@@ -75,6 +88,31 @@ create table if not exists public.reflections (
   answer text not null,
   created_at timestamptz default now(),
   unique (user_id, question_key)
+);
+
+-- People mentioned in the user's posts, kept as a running, AI-maintained
+-- record — the start of a graph: people as nodes, posts as the edges that
+-- connect them (via post_people) and feed what's known about each one.
+create table if not exists public.people (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) not null,
+  name text not null,
+  relationship text,
+  notes text,
+  mention_count integer default 1,
+  first_mentioned_at timestamptz default now(),
+  last_mentioned_at timestamptz default now(),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (user_id, name)
+);
+
+create table if not exists public.post_people (
+  post_id uuid references public.posts(id) on delete cascade not null,
+  person_id uuid references public.people(id) on delete cascade not null,
+  user_id uuid references auth.users(id) not null,
+  created_at timestamptz default now(),
+  primary key (post_id, person_id)
 );
 
 create index if not exists posts_user_created_idx
@@ -89,6 +127,17 @@ alter table public.tags enable row level security;
 alter table public.post_tags enable row level security;
 alter table public.profile_changes enable row level security;
 alter table public.reflections enable row level security;
+alter table public.reflect_questions enable row level security;
+alter table public.people enable row level security;
+alter table public.post_people enable row level security;
+
+-- reflect_questions
+create policy "reflect_questions select own" on public.reflect_questions
+  for select using (auth.uid() = user_id);
+create policy "reflect_questions insert own" on public.reflect_questions
+  for insert with check (auth.uid() = user_id);
+create policy "reflect_questions delete own" on public.reflect_questions
+  for delete using (auth.uid() = user_id);
 
 -- profiles: a user manages only their own row
 create policy "profiles select own" on public.profiles
@@ -160,6 +209,24 @@ create policy "reflections insert own" on public.reflections
 create policy "reflections update own" on public.reflections
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "reflections delete own" on public.reflections
+  for delete using (auth.uid() = user_id);
+
+-- people
+create policy "people select own" on public.people
+  for select using (auth.uid() = user_id);
+create policy "people insert own" on public.people
+  for insert with check (auth.uid() = user_id);
+create policy "people update own" on public.people
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "people delete own" on public.people
+  for delete using (auth.uid() = user_id);
+
+-- post_people
+create policy "post_people select own" on public.post_people
+  for select using (auth.uid() = user_id);
+create policy "post_people insert own" on public.post_people
+  for insert with check (auth.uid() = user_id);
+create policy "post_people delete own" on public.post_people
   for delete using (auth.uid() = user_id);
 
 -- ========== Auto-create profile on signup ==========

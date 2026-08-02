@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import { createClient } from "@/lib/supabase/client";
 import type { Post, Profile } from "@/lib/types";
@@ -273,6 +274,16 @@ export default function ProfileScreen() {
               )}
             </div>
           ))}
+
+          <Link
+            href="/people"
+            className="pressable mt-6 flex w-full items-center justify-between rounded-2xl border border-border/60 px-4 py-3.5"
+          >
+            <span className="text-sm">People the notebook has noticed</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 text-faint">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+            </svg>
+          </Link>
 
           <button
             type="button"

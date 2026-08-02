@@ -5,6 +5,7 @@ import Image from "next/image";
 import type { Post } from "@/lib/types";
 import { formatPostTime } from "@/lib/dates";
 import Avatar from "@/components/Avatar";
+import { AISparkleButton, AICommentPopup } from "@/components/AIComment";
 
 export interface PostAuthor {
   name: string | null;
@@ -28,9 +29,11 @@ export default function PostCard({
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const hasImages = post.post_images.length > 0;
   const tags = post.post_tags.map((pt) => pt.tags).filter(Boolean);
   const name = author.name || "You";
+  const hasAiComment = Boolean(post.ai_comment);
 
   const menu = (
     <div className="relative shrink-0">
@@ -140,7 +143,12 @@ export default function PostCard({
               </span>
               {badges}
             </div>
-            {menu}
+            <div className="flex shrink-0 items-center gap-1">
+              {hasAiComment && (
+                <AISparkleButton onClick={() => setAiOpen(true)} />
+              )}
+              {menu}
+            </div>
           </div>
           <p
             data-selectable
@@ -150,6 +158,9 @@ export default function PostCard({
           </p>
           {tagRow}
         </div>
+        {aiOpen && (
+          <AICommentPopup post={post} onClose={() => setAiOpen(false)} />
+        )}
       </article>
     );
   }
@@ -167,7 +178,10 @@ export default function PostCard({
             </p>
           </div>
         </div>
-        {menu}
+        <div className="flex shrink-0 items-center gap-1">
+          {hasAiComment && <AISparkleButton onClick={() => setAiOpen(true)} />}
+          {menu}
+        </div>
       </div>
       <div
         className={
@@ -202,6 +216,9 @@ export default function PostCard({
         </p>
       )}
       <div className="px-4">{tagRow}</div>
+      {aiOpen && (
+        <AICommentPopup post={post} onClose={() => setAiOpen(false)} />
+      )}
     </article>
   );
 }

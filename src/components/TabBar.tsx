@@ -43,7 +43,7 @@ export default function TabBar() {
   const pathname = usePathname();
 
   return (
-    <nav className="shrink-0 border-t border-border bg-background pb-[var(--safe-bottom)]">
+    <nav className="shrink-0 border-t border-border bg-background pb-[var(--safe-bottom)] mb-[-5px]">
       <div className="mx-auto flex max-w-lg items-stretch justify-around">
         {TABS.map((tab) => {
           const active = pathname.startsWith(tab.href);
@@ -51,7 +51,7 @@ export default function TabBar() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`pressable flex flex-1 flex-col items-center gap-1 py-2.5 transition-colors ${
+              className={`pressable flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-0.5 transition-colors ${
                 active ? "text-foreground" : "text-faint"
               }`}
             >
@@ -60,11 +60,11 @@ export default function TabBar() {
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={active ? 2 : 1.5}
-                className="h-6 w-6"
+                className="h-[22px] w-[22px]"
               >
                 {tab.icon}
               </svg>
-              <span className="text-[10px] font-medium tracking-wide">
+              <span className="text-[9px] font-medium tracking-wide">
                 {tab.label}
               </span>
             </Link>

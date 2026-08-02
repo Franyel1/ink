@@ -27,6 +27,15 @@ npm run dev
 
 Open http://localhost:3000 — ideally in a mobile-sized viewport (this app is designed iPhone-first).
 
+## AI layer (optional)
+
+Ink can read your posts and write reflection questions that feel like the notebook noticed you:
+
+1. Run [`supabase/migrations/002_reflect_questions.sql`](supabase/migrations/002_reflect_questions.sql) and [`supabase/migrations/003_notebook_memory.sql`](supabase/migrations/003_notebook_memory.sql) in the Supabase SQL editor (fresh installs get both from `schema.sql` automatically).
+2. Add `OPENAI_API_KEY` to `.env.local` (see `.env.example`) and restart the dev server.
+
+Every new post is quietly analyzed (summary, sentiment, topics → the `ai_*` columns on `posts`) using GPT-4.1 mini. When you run low on reflection questions, the same model writes new ones from your recent posts, profile, and past answers — and rewrites a running `notebook_memory` note about you (`profiles.notebook_memory`) each time, so later questions can dig into whatever's still vague instead of just avoiding repeats. Without the key, everything degrades gracefully — the app works exactly as before.
+
 ## Install as an app (iPhone)
 
 Open the deployed site in Safari → Share → **Add to Home Screen**. Ink runs full-screen in standalone mode with no browser chrome.

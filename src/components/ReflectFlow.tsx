@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { REFLECT_QUESTIONS } from "@/lib/reflectQuestions";
+import { REFLECT_QUESTIONS, type ReflectQuestion } from "@/lib/reflectQuestions";
 import type { Reflection } from "@/lib/types";
 import { useKeyboardInset } from "@/lib/useKeyboardInset";
 
@@ -10,14 +10,37 @@ import { useKeyboardInset } from "@/lib/useKeyboardInset";
  * One continuous journal page: answered questions stack above and stay
  * visible; each entry gets its own layout so the page grows into a
  * collage of ink rather than a form.
+ *
+ * The predetermined questions come first; after that, questions written
+ * by the AI from the user's own posts flow in seamlessly.
  */
 export default function ReflectFlow() {
   const [saved, setSaved] = useState<Record<string, Reflection> | null>(null);
+  const [generated, setGenerated] = useState<ReflectQuestion[]>([]);
   const [draft, setDraft] = useState("");
   const [absorbing, setAbsorbing] = useState(false);
   const [error, setError] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const generating = useRef(false);
   const keyboardInset = useKeyboardInset();
+
+  const loadGenerated = useCallback(() => {
+    const supabase = createClient();
+    return Promise.resolve(
+      supabase
+        .from("reflect_questions")
+        .select("question_key, question")
+        .order("created_at", { ascending: true })
+    )
+      .then(({ data }) => {
+        setGenerated(
+          ((data ?? []) as { question_key: string; question: string }[]).map(
+            (q) => ({ key: q.question_key, question: q.question })
+          )
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -30,20 +53,44 @@ export default function ReflectFlow() {
         setSaved(map);
       })
       .catch(() => setSaved({}));
-  }, []);
+    Promise.resolve().then(loadGenerated);
+  }, [loadGenerated]);
 
+  const allQuestions = useMemo(
+    () => [...REFLECT_QUESTIONS, ...generated],
+    [generated]
+  );
   const answered = useMemo(
-    () => (saved ? REFLECT_QUESTIONS.filter((q) => saved[q.key]) : []),
-    [saved]
+    () => (saved ? allQuestions.filter((q) => saved[q.key]) : []),
+    [saved, allQuestions]
   );
   const current = useMemo(
-    () => (saved ? REFLECT_QUESTIONS.find((q) => !saved[q.key]) ?? null : null),
-    [saved]
+    () => (saved ? allQuestions.find((q) => !saved[q.key]) ?? null : null),
+    [saved, allQuestions]
   );
   const done = saved !== null && current === null;
   const progress = Math.round(
-    (answered.length / REFLECT_QUESTIONS.length) * 100
+    (answered.length / Math.max(allQuestions.length, 1)) * 100
   );
+
+  // When the queue runs low, ask the server to write new questions from
+  // the user's posts. The server rate-limits itself; failures are silent.
+  const unansweredCount = saved
+    ? allQuestions.length - answered.length
+    : Infinity;
+  useEffect(() => {
+    if (unansweredCount > 1 || generating.current || saved === null) return;
+    generating.current = true;
+    fetch("/api/reflect/generate", { method: "POST" })
+      .then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (body?.generated > 0) await loadGenerated();
+      })
+      .catch(() => {})
+      .finally(() => {
+        generating.current = false;
+      });
+  }, [unansweredCount, saved, loadGenerated]);
 
   // Bring each new question to the top of the page as it appears
   const answeredCount = answered.length;
@@ -132,16 +179,18 @@ export default function ReflectFlow() {
               />
             ))}
 
-            {/* The active question */}
+            {/* The active question — scroll-mt keeps it below the fixed
+                header, min-h leaves room so it can always reach the top */}
             {current && (
               <div
+                ref={endRef}
                 key={current.key}
-                className={`pb-6 transition-all duration-500 ${
+                className={`min-h-[calc(100dvh-16rem)] scroll-mt-[calc(var(--safe-top)+6.75rem)] pb-6 transition-all duration-500 ${
                   absorbing ? "opacity-40" : "rise-in"
                 } ${answered.length > 0 ? "mt-10" : "mt-2"}`}
               >
                 <p className="text-xs uppercase tracking-[0.25em] text-faint">
-                  {answered.length + 1} · {REFLECT_QUESTIONS.length}
+                  {answered.length + 1} · {allQuestions.length}
                 </p>
                 <h2 className="ink-reveal mt-3 text-[22px] font-medium leading-snug">
                   {current.question}
@@ -181,7 +230,10 @@ export default function ReflectFlow() {
             )}
 
             {done && (
-              <div className="rise-in border-t border-border/50 py-14 text-center">
+              <div
+                ref={endRef}
+                className="rise-in scroll-mt-[calc(var(--safe-top)+6.75rem)] border-t border-border/50 py-14 text-center"
+              >
                 <p className="font-script text-6xl">100%</p>
                 <p className="mx-auto mt-4 max-w-xs text-sm text-faint">
                   The page is full — for now. Everything you wrote lives here,
@@ -189,8 +241,6 @@ export default function ReflectFlow() {
                 </p>
               </div>
             )}
-
-            <div ref={endRef} />
           </>
         )}
       </div>
@@ -211,6 +261,10 @@ function AnsweredEntry({
   const variant = index % 4;
   const rotate = [(index % 3) - 1, 1 - (index % 3)][index % 2] * 0.6;
 
+  // Questions always share one voice — small uppercase label — so the
+  // page stays legible while the answers vary.
+  const questionClass = "text-xs uppercase tracking-[0.2em]";
+
   if (variant === 1) {
     // pushed to the right, quiet and light
     return (
@@ -218,7 +272,7 @@ function AnsweredEntry({
         className="mb-10 ml-auto w-[88%] text-right"
         style={{ transform: `rotate(${rotate}deg)` }}
       >
-        <p className="text-sm italic text-muted">{question}</p>
+        <p className={`${questionClass} text-faint`}>{question}</p>
         <p data-selectable className="mt-2 whitespace-pre-wrap text-lg font-light leading-relaxed text-foreground/85">
           {answer}
         </p>
@@ -233,8 +287,8 @@ function AnsweredEntry({
         className="mb-10 rounded-2xl bg-paper p-5 text-ink shadow-lg shadow-black/40"
         style={{ transform: `rotate(${rotate}deg)` }}
       >
-        <p className="font-script text-lg text-ink/60">{question}</p>
-        <p data-selectable className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed">
+        <p className={`${questionClass} text-ink/50`}>{question}</p>
+        <p data-selectable className="mt-3 whitespace-pre-wrap font-script text-2xl leading-snug">
           {answer}
         </p>
       </div>

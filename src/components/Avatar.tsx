@@ -32,7 +32,7 @@ export default function Avatar({ name, url, size = 36, className = "" }: Props) 
           style={{
             fontSize: size * 0.52,
             // Caveat is italic-leaning; nudge left and down to center optically
-            transform: `translate(${-size * 0.045}px, ${size * 0.025}px)`,
+            transform: `translate(${-size * 0.045}px, ${size * 0.01}px)`,
           }}
         >
           {initial}

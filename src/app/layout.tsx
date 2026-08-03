@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Caveat } from "next/font/google";
 import "./globals.css";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,6 +45,7 @@ export default function RootLayout({
     <html lang="en" className={`${geistSans.variable} ${caveat.variable}`}>
       <body suppressHydrationWarning>
         <div id="app-shell">{children}</div>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

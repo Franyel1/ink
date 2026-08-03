@@ -1,7 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login"];
+// Reachable without a session. `/offline` is here so the service worker can
+// precache it, and so it still renders if the session has lapsed by the time you
+// open the app with no signal.
+const PUBLIC_PATHS = ["/login", "/offline"];
+
+// Pointless once you're signed in — bounce to the feed. `/offline` deliberately
+// isn't one of these: the worker has to be able to fetch it while signed in.
+const SIGNED_OUT_ONLY_PATHS = ["/login"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -41,7 +48,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isPublic) {
+  if (user && SIGNED_OUT_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
     const url = request.nextUrl.clone();
     url.pathname = "/feed";
     return NextResponse.redirect(url);
@@ -52,6 +59,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

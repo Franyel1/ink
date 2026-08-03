@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useClientFlag } from "@/lib/useClientFlag";
 
 // Minimal shape of the Web Speech API — not in lib.dom.d.ts by default.
 interface SpeechRecognitionResultLike {
@@ -35,14 +36,18 @@ function getRecognitionCtor(): SpeechRecognitionCtor | null {
 
 /** Dictation for a text field, backed by the browser's Web Speech API. */
 export function useSpeechToText(onFinalChunk: (text: string) => void) {
-  const [supported, setSupported] = useState(false);
+  const supported = useClientFlag(() => getRecognitionCtor() !== null);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const onFinalChunkRef = useRef(onFinalChunk);
-  onFinalChunkRef.current = onFinalChunk;
+
+  // Kept current after every render so the long-lived `onresult` handler always
+  // reports to the latest callback.
+  useEffect(() => {
+    onFinalChunkRef.current = onFinalChunk;
+  });
 
   useEffect(() => {
-    setSupported(getRecognitionCtor() !== null);
     return () => recognitionRef.current?.stop();
   }, []);
 

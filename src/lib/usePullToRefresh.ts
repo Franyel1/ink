@@ -25,7 +25,12 @@ export function usePullToRefresh<T extends HTMLElement>(
   const pullValue = useRef(0);
   const refreshingRef = useRef(false);
   const onRefreshRef = useRef(onRefresh);
-  onRefreshRef.current = onRefresh;
+
+  // Kept current after every render so the touch handlers below — bound once —
+  // always call the latest callback without re-binding listeners.
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  });
 
   useEffect(() => {
     const el = ref.current;

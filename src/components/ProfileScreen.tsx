@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Post, Profile } from "@/lib/types";
 import { POST_SELECT, setPinned } from "@/lib/posts";
 import { formatPostTime } from "@/lib/dates";
+import { clearOfflineData, readDrafts } from "@/lib/offline";
 
 type EditableField =
   | "display_name"
@@ -187,6 +188,20 @@ export default function ProfileScreen() {
   }
 
   async function signOut() {
+    // Drafts flush under whoever is signed in, so they can't outlive the
+    // session — but they're unsent writing, so don't drop them silently.
+    const pending = await readDrafts();
+    if (pending.length > 0) {
+      const ok = window.confirm(
+        `${pending.length} post${pending.length === 1 ? "" : "s"} ${
+          pending.length === 1 ? "hasn't" : "haven't"
+        } sent yet. Signing out deletes ${
+          pending.length === 1 ? "it" : "them"
+        }. Sign out anyway?`
+      );
+      if (!ok) return;
+    }
+    await clearOfflineData();
     const supabase = createClient();
     await supabase.auth.signOut();
     router.replace("/login");

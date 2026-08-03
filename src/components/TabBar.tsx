@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { countReadyLetters } from "@/lib/letters";
 
 const TABS = [
   {
@@ -41,6 +43,19 @@ const TABS = [
 
 export default function TabBar() {
   const pathname = usePathname();
+  const [lettersReady, setLettersReady] = useState(0);
+
+  // Re-checked on every tab change so the dot clears as soon as you've read the
+  // letter, without needing to plumb state up from the Future page.
+  useEffect(() => {
+    let stale = false;
+    countReadyLetters().then((n) => {
+      if (!stale) setLettersReady(n);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [pathname]);
 
   return (
     <nav className="shrink-0 border-t border-border bg-background pb-[var(--safe-bottom)] mb-[-5px]">
@@ -55,15 +70,26 @@ export default function TabBar() {
                 active ? "text-foreground" : "text-faint"
               }`}
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={active ? 2 : 1.5}
-                className="h-[22px] w-[22px]"
-              >
-                {tab.icon}
-              </svg>
+              <span className="relative">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={active ? 2 : 1.5}
+                  className="h-[22px] w-[22px]"
+                >
+                  {tab.icon}
+                </svg>
+                {tab.href === "/reflect" && lettersReady > 0 && (
+                  <span
+                    aria-label={`${lettersReady} letter${
+                      lettersReady === 1 ? "" : "s"
+                    } ready to open`}
+                    role="status"
+                    className="absolute -right-1 -top-0.5 h-2 w-2 rounded-full bg-foreground ring-2 ring-background"
+                  />
+                )}
+              </span>
               <span className="text-[9px] font-medium tracking-wide">
                 {tab.label}
               </span>

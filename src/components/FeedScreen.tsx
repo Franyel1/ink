@@ -5,6 +5,14 @@ import type { Post, Tag } from "@/lib/types";
 import { fetchPosts, fetchTags, deletePost, setPinned } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
+import {
+  cacheFeed,
+  discardDraft,
+  flushDrafts,
+  readCachedFeed,
+  readDrafts,
+  type QueuedDraft,
+} from "@/lib/offline";
 import PostCard, { type PostAuthor } from "@/components/PostCard";
 import Composer from "@/components/Composer";
 import SearchOverlay from "@/components/SearchOverlay";
@@ -21,6 +29,8 @@ export default function FeedScreen() {
   const [editing, setEditing] = useState<Post | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [stale, setStale] = useState(false);
+  const [drafts, setDrafts] = useState<QueuedDraft[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const loadFeed = useCallback(async () => {
@@ -34,22 +44,58 @@ export default function FeedScreen() {
         .maybeSingle();
       return data;
     });
+    setDrafts(await readDrafts());
     try {
       const [p, t, prof] = await Promise.all([fetchPosts(), fetchTags(), loadAuthor]);
       setPosts(p);
       setTags(t);
       if (prof) setAuthor({ name: prof.display_name, avatarUrl: prof.profile_picture_url });
       setLoadError(false);
+      setStale(false);
+      void cacheFeed(p, t);
     } catch {
-      setLoadError(true);
+      // No network — fall back to the last feed we saw on this device. Only a
+      // genuinely empty cache counts as an error worth showing.
+      const cached = await readCachedFeed();
+      if (cached) {
+        setPosts(cached.posts);
+        setTags(cached.tags);
+        setStale(true);
+        setLoadError(false);
+      } else {
+        setLoadError(true);
+      }
     }
   }, []);
 
   useEffect(() => {
+    // Mount fetch: every setState inside loadFeed happens after an await, so
+    // there's no cascading render here — the compiler just can't see across the
+    // async boundary. Deliberately client-side rather than server-fetched, so
+    // the feed can fall back to the offline cache when the network is gone.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadFeed();
   }, [loadFeed]);
 
   const { pull, pulling, refreshing } = usePullToRefresh(scrollRef, loadFeed);
+
+  // Anything written offline goes out the moment there's a network again —
+  // on reconnect, and on mount to catch drafts left over from a previous visit.
+  useEffect(() => {
+    let cancelled = false;
+    async function send() {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      if ((await readDrafts()).length === 0) return;
+      await flushDrafts();
+      if (!cancelled) await loadFeed();
+    }
+    void send();
+    window.addEventListener("online", send);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", send);
+    };
+  }, [loadFeed]);
 
   const handleEdit = useCallback((post: Post) => {
     setEditing(post);
@@ -144,7 +190,51 @@ export default function FeedScreen() {
               <span className="font-script text-2xl text-faint">…</span>
             </div>
           )}
-          {posts !== null && posts.length === 0 && (
+          {stale && (
+            <p className="mx-4 mb-1 mt-2 text-center text-[11px] uppercase tracking-[0.15em] text-faint">
+              Offline — showing what&apos;s saved here
+            </p>
+          )}
+
+          {/* Written with no signal, still on this device. Shown as itself
+              rather than as a finished post, so nothing looks more permanent
+              than it is. */}
+          {drafts.map((draft) => (
+            <div
+              key={draft.id}
+              className="rise-in mx-4 mb-4 mt-2 rounded-2xl border border-dashed border-border/80 bg-surface/50 p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] uppercase tracking-[0.15em] text-faint">
+                  Waiting for signal
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await discardDraft(draft.id);
+                    setDrafts((all) => all.filter((d) => d.id !== draft.id));
+                  }}
+                  className="pressable shrink-0 text-[11px] text-faint underline"
+                >
+                  Discard
+                </button>
+              </div>
+              <p
+                data-selectable
+                className="font-script mt-2 whitespace-pre-wrap text-xl leading-snug text-foreground/70"
+              >
+                {draft.content}
+              </p>
+              {draft.files.length > 0 && (
+                <p className="mt-2 text-[11px] text-faint">
+                  {draft.files.length} image
+                  {draft.files.length === 1 ? "" : "s"} attached
+                </p>
+              )}
+            </div>
+          ))}
+
+          {posts !== null && posts.length === 0 && drafts.length === 0 && (
             <div className="rise-in mt-20 px-10 text-center">
               <p className="font-script text-3xl text-muted">A blank page.</p>
               <p className="mt-3 text-sm text-faint">
@@ -207,6 +297,11 @@ export default function FeedScreen() {
             setEditing(null);
           }}
           onSaved={handleSaved}
+          onQueued={async () => {
+            setDrafts(await readDrafts());
+            setComposerOpen(false);
+            setEditing(null);
+          }}
           onTagCreated={(tag) =>
             setTags((all) =>
               all.some((t) => t.id === tag.id) ? all : [...all, tag]

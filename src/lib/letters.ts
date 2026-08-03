@@ -54,6 +54,22 @@ export function isLetterUnlocked(letter: Letter): boolean {
   return letter.target_open_date <= new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * How many letters have come due and haven't been read yet. Drives the dot on
+ * the Reflect tab — without it a letter you sealed a year ago unlocks in
+ * silence and waits for you to happen to wander into the Future page.
+ */
+export async function countReadyLetters(): Promise<number> {
+  const supabase = createClient();
+  const { count, error } = await supabase
+    .from("letters")
+    .select("id", { count: "exact", head: true })
+    .is("opened_at", null)
+    .lte("target_open_date", new Date().toISOString().slice(0, 10));
+  if (error) return 0;
+  return count ?? 0;
+}
+
 export async function markLetterOpened(id: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase

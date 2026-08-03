@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Post } from "@/lib/types";
 import { findOnThisDay } from "@/lib/dates";
+import { useClientFlag } from "@/lib/useClientFlag";
 
 function dismissKey(postId: string) {
   const today = new Date().toISOString().slice(0, 10);
@@ -11,18 +12,16 @@ function dismissKey(postId: string) {
 
 /** A quiet callback to a post from a year (or more) ago the same day, if one exists. */
 export default function OnThisDay({ posts }: { posts: Post[] }) {
-  const [memory, setMemory] = useState<Post | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const memory = findOnThisDay(posts);
+  // Dismissal lives in two places on purpose: localStorage remembers it across
+  // reloads (read client-side only, to keep hydration matching), and state
+  // covers the dismissal that just happened this render.
+  const dismissedEarlier = useClientFlag(() =>
+    memory ? localStorage.getItem(dismissKey(memory.id)) !== null : false
+  );
+  const [dismissedNow, setDismissedNow] = useState(false);
 
-  useEffect(() => {
-    const found = findOnThisDay(posts);
-    setMemory(found);
-    if (found && localStorage.getItem(dismissKey(found.id))) {
-      setDismissed(true);
-    }
-  }, [posts]);
-
-  if (!memory || dismissed) return null;
+  if (!memory || dismissedEarlier || dismissedNow) return null;
 
   const yearsAgo =
     new Date().getFullYear() - new Date(memory.created_at).getFullYear();
@@ -38,7 +37,7 @@ export default function OnThisDay({ posts }: { posts: Post[] }) {
           aria-label="Dismiss"
           onClick={() => {
             localStorage.setItem(dismissKey(memory.id), "1");
-            setDismissed(true);
+            setDismissedNow(true);
           }}
           className="pressable shrink-0 text-faint"
         >

@@ -6,6 +6,7 @@ import Image from "next/image";
 import type { Post, PostType, Tag } from "@/lib/types";
 import { POST_TYPES } from "@/lib/types";
 import { createPost, updatePost, createTag, type PostInput } from "@/lib/posts";
+import { isOffline, queueDraft } from "@/lib/offline";
 import { useKeyboardInset } from "@/lib/useKeyboardInset";
 import { useSpeechToText } from "@/lib/useSpeechToText";
 import Avatar from "@/components/Avatar";
@@ -21,6 +22,7 @@ interface Props {
   author: Author;
   onClose: () => void;
   onSaved: (post: Post, isEdit: boolean) => void;
+  onQueued: () => void;
   onTagCreated: (tag: Tag) => void;
 }
 
@@ -39,6 +41,7 @@ export default function Composer({
   author,
   onClose,
   onSaved,
+  onQueued,
   onTagCreated,
 }: Props) {
   const [content, setContent] = useState(editing?.content ?? "");
@@ -119,7 +122,21 @@ export default function Composer({
       files.forEach((f) => URL.revokeObjectURL(f.url));
       onSaved(post, !!editing);
     } catch {
-      setError("Something didn't stick. Try again.");
+      // A new post can wait on the doorstep until there's a network. An edit
+      // can't — replaying it later would clobber whatever the post looks like
+      // by then — so that one has to be retried by hand.
+      if (!editing && isOffline()) {
+        try {
+          await queueDraft(input);
+          files.forEach((f) => URL.revokeObjectURL(f.url));
+          onQueued();
+          return;
+        } catch {
+          setError("No signal, and nowhere to keep this. Try again.");
+        }
+      } else {
+        setError("Something didn't stick. Try again.");
+      }
     } finally {
       setBusy(false);
     }

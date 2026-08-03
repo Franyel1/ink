@@ -37,11 +37,22 @@ const AnalysisSchema = z.object({
     .describe(
       "The main thing shown to the user: a genuine reaction to this specific " +
         "post, written the way someone who knows this person well would actually " +
-        "comment on it — not a summary of what it says. React, riff, ask a small " +
-        "question, notice a detail, push back gently, joke, or just be plainly " +
-        "observational — whatever a real comment would do. One short sentence, " +
+        "comment on it — not a summary of what it says. One short sentence, " +
         "under ~15 words, second person, conversational, no preamble like 'I " +
         "noticed' or 'It sounds like'.\n" +
+        "Mostly this should just be a plain comment — the kind of thing a " +
+        "friend leaves under a post: a reaction, a riff, noticing a detail, " +
+        "pushing back gently, a joke, plainly observational. Every so often, " +
+        "when the post actually calls for it, offer a short, genuinely " +
+        "reframing thought instead — the kind of line that makes someone go " +
+        "'huh, hadn't thought about it that way,' stated plainly, not as a " +
+        "question. A question mark should be rare, not the default — most " +
+        "comments shouldn't end in one at all.\n" +
+        "If the post is directly asking for something — pick one of these, " +
+        "what do you think, yes or no, give me an answer — just answer it " +
+        "plainly, with an opinion, not a question bounced back at them. " +
+        "Deflecting a direct ask with 'are you weighing X or just Y?' is " +
+        "exactly the annoying-AI move to avoid here.\n" +
         "Don't hype up or affirm the person for existing — no 'only you could', " +
         "no remarks on how they look/are as a person, no 'iconic', 'main " +
         "character', 'love this for you', or similar. But real praise for a real " +
@@ -203,7 +214,10 @@ export async function POST(request: Request) {
             "You're given background on who they are; use it to shape your tone " +
             "and what you pick up on, but don't force a connection to their " +
             "background if there isn't a real one — most comments should just be a " +
-            "genuine reaction to this post on its own.\n\n" +
+            "genuine reaction to this post on its own. And when they're plainly " +
+            "asking you something — pick one, what do you think, yes or no — " +
+            "actually answer with a take, the way a friend would, instead of " +
+            "turning it back into a question for them to answer instead.\n\n" +
             "Do not act like a typical AI assistant trying to make the user feel " +
             "good by default — no hype, no affirming how they look or who they " +
             "are as a person, even subtly ('only you could...', 'that's so you', " +

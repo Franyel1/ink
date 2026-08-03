@@ -126,7 +126,11 @@ export default function FeedScreen() {
         <div
           className="relative bg-background"
           style={{
-            transform: `translateY(${pull}px)`,
+            // Only set a transform while it's actually needed: any transform,
+            // even translateY(0), makes this the containing block for
+            // descendant `position: fixed` elements (like post menus and the
+            // AI comment popup), which breaks their full-viewport positioning.
+            transform: pull !== 0 ? `translateY(${pull}px)` : undefined,
             transition: pulling ? "none" : "transform 250ms cubic-bezier(0.22,1,0.36,1)",
           }}
         >

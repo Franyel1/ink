@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Post } from "@/lib/types";
 
 const SENTIMENT_LABEL: Record<
@@ -45,7 +46,12 @@ export function AICommentPopup({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  // Rendered via portal so this stays fixed to the viewport even when an
+  // ancestor (e.g. the feed's pull-to-refresh wrapper) has a CSS transform,
+  // which would otherwise become the containing block for `fixed` children.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
       <button
         type="button"
@@ -122,6 +128,7 @@ export function AICommentPopup({
           Close
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -16,7 +16,7 @@ export const REFLECT_QUESTIONS: ReflectQuestion[] = [
   { key: "let-go", question: "What do you need to let go of?" },
   {
     key: "energy",
-    question: "What fills you with energy — and what drains it?",
+    question: "What fills you with energy, and what drains it?",
   },
   {
     key: "younger-self",

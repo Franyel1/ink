@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { BELIEFS_RULE, NO_EM_DASHES } from "@/lib/aiStyle";
 import { REFLECT_QUESTIONS } from "@/lib/reflectQuestions";
 
 const GenerationSchema = z.object({
@@ -11,7 +12,7 @@ const GenerationSchema = z.object({
     .describe(
       "The full, rewritten notebook memory: a short, plain-language set of notes " +
         "about who this person is, capturing everything worth remembering from their " +
-        "prior answers plus what's new. Not a log — a coherent, deduplicated picture. " +
+        "prior answers plus what's new. Not a log, a coherent, deduplicated picture. " +
         "Keep it under ~200 words. Third person, plain sentences, no headers."
     ),
   questions: z
@@ -85,7 +86,7 @@ export async function POST() {
       const topics = Array.isArray(p.ai_topics) ? ` [${p.ai_topics.join(", ")}]` : "";
       return `- (${p.post_type}, ${String(p.created_at).slice(0, 10)}) ${
         p.content.slice(0, 200)
-      }${p.ai_summary ? ` — ${p.ai_summary}` : ""}${topics}`;
+      }${p.ai_summary ? ` | ${p.ai_summary}` : ""}${topics}`;
     })
     .join("\n");
 
@@ -128,21 +129,26 @@ export async function POST() {
             "latest answers with what you already knew. It should read as one coherent " +
             "picture of the person, not a diary of turns.\n" +
             "- Note things like: recurring fears or tensions, values, how they cope, " +
-            "relationships or people who come up, what they're working toward — " +
+            "relationships or people who come up, what they're working toward, " +
             "whatever is actually there. Don't invent detail that isn't supported.\n" +
             "- Where something is still vague or only partly answered, say so plainly " +
             "(e.g. 'unclear what specifically...') so future questions know to dig there.\n\n" +
             "Rules for the questions:\n" +
             "- Prefer deepening a thread that's vague, unresolved, or only lightly " +
-            "touched in the notebook memory over introducing a brand new topic — " +
+            "touched in the notebook memory over introducing a brand new topic, " +
             "but don't force it if nothing calls for it.\n" +
             "- Draw on recurring themes, tensions, or small moments from their posts, " +
-            "but never quote a post verbatim or name a specific entry — the connection " +
+            "but never quote a post verbatim or name a specific entry, the connection " +
             "should feel intuited, not surveilled.\n" +
             "- One question per theme; each question stands alone.\n" +
             "- Calm, warm, curious tone. Never clinical, never therapy-speak, never flattering.\n" +
             "- Second person, 8-20 words, ends with a question mark.\n" +
-            "- Do not repeat or lightly rephrase any previously asked question.",
+            "- Do not repeat or lightly rephrase any previously asked question.\n" +
+            "- A question never asks them to reflect through a belief frame " +
+            "unless their own posts already put it there. 'What is God teaching " +
+            "you here?' is an overstep even for someone who listed a faith." +
+            BELIEFS_RULE +
+            NO_EM_DASHES,
         },
         {
           role: "user",

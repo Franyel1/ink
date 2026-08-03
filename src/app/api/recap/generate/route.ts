@@ -3,18 +3,19 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
+import { NO_EM_DASHES } from "@/lib/aiStyle";
 
 const RecapSchema = z.object({
   recap: z
     .string()
     .describe(
       "A short recap of the person's last month, written in the same quiet, " +
-        "observational voice as a comment on a single post — like flipping back " +
+        "observational voice as a comment on a single post, like flipping back " +
         "through the notebook and noticing what was actually there, not a " +
         "performance review. 100-180 words, second person, plain paragraphs, " +
         "no headers or bullet points. Name real patterns (recurring topics, " +
         "moods, people, a shift over the month) only if they're actually " +
-        "supported by what's below — don't invent detail. No hype, no praise " +
+        "supported by what's below, don't invent detail. No hype, no praise " +
         "unless something genuinely was accomplished, no therapy-speak."
     ),
 });
@@ -82,7 +83,7 @@ export async function POST() {
       const topics = Array.isArray(p.ai_topics) ? ` [${p.ai_topics.join(", ")}]` : "";
       return `- (${p.post_type}, ${String(p.created_at).slice(0, 10)}) ${
         p.content.slice(0, 200)
-      }${p.ai_summary ? ` — ${p.ai_summary}` : ""}${topics}`;
+      }${p.ai_summary ? ` | ${p.ai_summary}` : ""}${topics}`;
     })
     .join("\n");
 
@@ -103,8 +104,8 @@ export async function POST() {
             "app, reading back through everything the person wrote that month. " +
             "Same voice as commenting on a single post: a friend who actually " +
             "read this, not a stranger summarizing. Do not hype up the person " +
-            "or affirm who they are — react to what actually happened. Read " +
-            "casual/internet slang contextually, not literally.",
+            "or affirm who they are, react to what actually happened. Read " +
+            "casual/internet slang contextually, not literally." + NO_EM_DASHES,
         },
         {
           role: "user",

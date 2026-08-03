@@ -94,7 +94,7 @@ export default function PresentSection() {
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && ask()}
-              placeholder="a topic — work, mom, this weekend…"
+              placeholder="a topic: work, mom, this weekend…"
               className="ink-input w-full"
             />
           </div>

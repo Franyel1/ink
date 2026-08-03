@@ -189,7 +189,7 @@ export default function FutureLetters() {
             <p className="mt-2 text-xs text-faint">…</p>
           ) : prompts.length === 0 ? (
             <p className="mt-2 text-xs text-faint">
-              Nothing suggested — write about whatever&apos;s on your mind.
+              Nothing suggested. Write about whatever&apos;s on your mind.
             </p>
           ) : (
             <div className="mt-2 flex flex-wrap gap-1.5">

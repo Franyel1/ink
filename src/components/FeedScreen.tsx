@@ -192,7 +192,7 @@ export default function FeedScreen() {
           )}
           {stale && (
             <p className="mx-4 mb-1 mt-2 text-center text-[11px] uppercase tracking-[0.15em] text-faint">
-              Offline — showing what&apos;s saved here
+              Offline. Showing what&apos;s saved here
             </p>
           )}
 
@@ -238,7 +238,7 @@ export default function FeedScreen() {
             <div className="rise-in mt-20 px-10 text-center">
               <p className="font-script text-3xl text-muted">A blank page.</p>
               <p className="mt-3 text-sm text-faint">
-                Write anything — a thought, a moment, a recipe, a memory.
+                Write anything: a thought, a moment, a recipe, a memory.
               </p>
             </div>
           )}

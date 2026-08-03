@@ -3,12 +3,13 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
+import { NO_EM_DASHES } from "@/lib/aiStyle";
 
 const RefineSchema = z.object({
   refined: z
     .string()
     .describe(
-      "The user's own goal, tightened into one clear sentence — same intent, " +
+      "The user's own goal, tightened into one clear sentence, same intent, " +
         "clearer words. Never add ambition, specifics, or a plan they didn't " +
         "state. If it's already clear and short, return it close to unchanged. " +
         "Under 20 words."
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
           content:
             "You lightly tighten a goal someone wrote for themselves. You do " +
             "not choose their goals, add ambition they didn't express, or " +
-            "invent a plan — you only clarify their own wording.",
+            "invent a plan, you only clarify their own wording." + NO_EM_DASHES,
         },
         { role: "user", content: `Their goal, as written: ${goal.raw_text}` },
       ],

@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
+import { NO_EM_DASHES } from "@/lib/aiStyle";
 
 const SuggestionsSchema = z.object({
   pairs: z
@@ -21,7 +22,7 @@ const SuggestionsSchema = z.object({
     .describe(
       "Pairs of entries that likely refer to the same real person under " +
         "different names/labels (e.g. 'SO' and a first name, a nickname and a " +
-        "full name). Only include pairs you're genuinely confident about — " +
+        "full name). Only include pairs you're genuinely confident about, " +
         "empty array if none stand out."
     ),
 });
@@ -66,8 +67,10 @@ export async function POST() {
         {
           role: "system",
           content:
+            NO_EM_DASHES.trim() +
+            "\n\n" +
             "You review a list of people extracted from someone's private " +
-            "journal and flag entries that are likely duplicates — the same " +
+            "journal and flag entries that are likely duplicates, the same " +
             "real person recorded under different names or labels (e.g. 'SO' " +
             "in one entry and a first name in another, both tied to the same " +
             "kind of moment or relationship). Be conservative: two different " +

@@ -56,7 +56,7 @@ export default function LoginPage() {
       <div className="rise-in mx-auto w-full max-w-sm">
         <h1 className="font-script text-7xl leading-none">Ink.</h1>
         <p className="mt-3 text-sm text-muted">
-          A private feed for your life, written in ink.
+          A feed of your own life, and a notebook that reads it back.
         </p>
 
         <form onSubmit={submit} className="mt-14 flex flex-col gap-8">

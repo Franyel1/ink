@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
+import { NO_EM_DASHES } from "@/lib/aiStyle";
 
 const AskSchema = z.object({
   question: z
@@ -46,8 +47,8 @@ export async function POST(request: Request) {
           role: "system",
           content:
             "You write one reflective question, on demand, about a topic the " +
-            "person just asked to think about. Calm, warm, curious — never " +
-            "clinical or therapy-speak.",
+            "person just asked to think about. Calm, warm, curious, never " +
+            "clinical or therapy-speak." + NO_EM_DASHES,
         },
         {
           role: "user",

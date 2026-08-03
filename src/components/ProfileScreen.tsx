@@ -158,6 +158,27 @@ export default function ProfileScreen() {
     setBusy(false);
   }
 
+  /**
+   * Clear the model's running note. It rebuilds from your posts and answers the
+   * next time questions are generated — this erases what it currently thinks,
+   * not its ability to think anything.
+   */
+  async function forgetNotebookMemory() {
+    if (!profile || busy) return;
+    const ok = window.confirm(
+      "Erase what the notebook has gathered about you? It starts over from your posts the next time it writes questions."
+    );
+    if (!ok) return;
+    setBusy(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("profiles")
+      .update({ notebook_memory: null, updated_at: new Date().toISOString() })
+      .eq("id", profile.id);
+    if (!error) setProfile({ ...profile, notebook_memory: null });
+    setBusy(false);
+  }
+
   async function uploadAvatar(file: File | undefined) {
     if (!file || !profile) return;
     const supabase = createClient();
@@ -351,6 +372,35 @@ export default function ProfileScreen() {
               )}
             </div>
           ))}
+
+          {/* The note the model keeps about you. Onboarding promises this is
+              readable and erasable — it can't be a black box. */}
+          <div className="mt-6 rounded-2xl border border-border/60 p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-xs uppercase tracking-widest text-faint">
+                What the notebook has gathered
+              </p>
+              {profile.notebook_memory && (
+                <button
+                  type="button"
+                  onClick={forgetNotebookMemory}
+                  disabled={busy}
+                  className="pressable shrink-0 text-[11px] text-faint underline disabled:opacity-40"
+                >
+                  Forget it
+                </button>
+              )}
+            </div>
+            <p
+              data-selectable
+              className={`mt-2 whitespace-pre-wrap leading-relaxed ${
+                profile.notebook_memory ? "text-sm text-muted" : "text-sm text-faint"
+              }`}
+            >
+              {profile.notebook_memory ||
+                "Nothing yet. It fills in as you write and answer."}
+            </p>
+          </div>
 
           <Link
             href="/people"

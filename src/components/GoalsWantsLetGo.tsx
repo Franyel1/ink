@@ -151,13 +151,13 @@ export default function GoalsWantsLetGo() {
         <h1 className="font-script text-4xl">Yours</h1>
       </header>
       <p className="px-6 text-sm text-faint">
-        Building, wanting, letting go — three lists, all in your own words.
+        Building, wanting, letting go. Three lists, all in your own words.
       </p>
 
       <div className="mt-5 space-y-4 px-6 pb-16">
         <Column
           title="Goals"
-          hint="Write it plainly — the notebook only tightens your wording, never adds to it."
+          hint="Write it plainly. The notebook only tightens your wording, never adds to it."
           placeholder="A goal, in your own words…"
           accentClass="border-foreground bg-foreground"
           items={goals.map((g) => ({ id: g.id, label: g.refined_text || g.raw_text, done: g.done }))}
@@ -173,7 +173,7 @@ export default function GoalsWantsLetGo() {
         />
         <Column
           title="Wants"
-          hint="Activities, small gifts to yourself — no AI involved, just yours."
+          hint="Activities, small gifts to yourself. No AI involved, just yours."
           placeholder="Something you want to do or have…"
           accentClass="border-foreground bg-foreground"
           items={wants.map((w) => ({ id: w.id, label: w.text, done: w.done }))}
@@ -189,7 +189,7 @@ export default function GoalsWantsLetGo() {
         />
         <Column
           title="Let go"
-          hint="A grudge, a habit, an expectation — things you're ready to set down."
+          hint="A grudge, a habit, an expectation. Things you're ready to set down."
           placeholder="Something you're trying to let go of…"
           accentClass="border-foreground bg-foreground"
           items={letGos.map((l) => ({ id: l.id, label: l.text, done: l.released }))}

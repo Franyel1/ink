@@ -291,7 +291,7 @@ export default function ReflectFlow() {
               >
                 <p className="font-script text-6xl">100%</p>
                 <p className="mx-auto mt-4 max-w-xs text-sm text-faint">
-                  The page is full — for now. Everything you wrote lives here,
+                  The page is full, for now. Everything you wrote lives here,
                   and new questions will find you later.
                 </p>
               </div>

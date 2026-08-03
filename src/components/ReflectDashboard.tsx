@@ -104,7 +104,7 @@ export default function ReflectDashboard() {
       title: "Past",
       subtitle: "What you've put down",
       preview:
-        nextQuestion ?? (pendingQuestions === 0 ? "The page is full — for now" : "Loading…"),
+        nextQuestion ?? (pendingQuestions === 0 ? "The page is full, for now" : "Loading…"),
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 5.5c2-1 5-1.2 8 0v13c-3-1.2-6-1-8 0v-13z" />

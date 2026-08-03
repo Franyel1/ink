@@ -10,7 +10,7 @@ export default function OfflinePage() {
       <p className="font-script text-4xl text-muted">No signal.</p>
       <p className="mt-3 text-sm text-faint">
         This page hasn&apos;t been opened on this device yet, so there&apos;s
-        nothing saved to show. Anything you write still keeps — it sends itself
+        nothing saved to show. Anything you write still keeps, and sends itself
         when you&apos;re back.
       </p>
     </div>

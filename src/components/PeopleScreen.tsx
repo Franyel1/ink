@@ -155,7 +155,7 @@ export default function PeopleScreen() {
       <p className="px-6 text-sm text-faint">
         {combineMode
           ? "Tap two people who are actually the same person, then confirm."
-          : "Everyone the notebook has picked up on from what you write — quietly kept, and filled in a little more each time they come up."}
+          : "Everyone the notebook has picked up on from what you write. Quietly kept, and filled in a little more each time they come up."}
       </p>
 
       <div className="mt-4 px-6">

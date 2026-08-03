@@ -40,6 +40,8 @@ export interface Profile {
   handling_good: string | null;
   handling_bad: string | null;
   improvement_goal: string | null;
+  /** The running note the model keeps about you, rewritten as it learns more. */
+  notebook_memory: string | null;
   onboarded: boolean;
   created_at: string;
   updated_at: string;

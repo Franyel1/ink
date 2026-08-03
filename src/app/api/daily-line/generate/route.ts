@@ -3,12 +3,13 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
+import { NO_EM_DASHES } from "@/lib/aiStyle";
 
 const LineSchema = z.object({
   line: z
     .string()
     .describe(
-      "One short line reading today's shape from their posts — plain, human, " +
+      "One short line reading today's shape from their posts, plain, human, " +
         "a little poetic but never flowery. Under 10 words. Not a summary, not " +
         "advice, not a compliment. E.g. 'quiet, and a little work-shaped.' or " +
         "'restless, but nothing's actually wrong.'"
@@ -72,9 +73,9 @@ export async function POST() {
           role: "system",
           content:
             "You read someone's posts from today and write one short line " +
-            "capturing the day's shape — like a weather report for how the day " +
+            "capturing the day's shape, like a weather report for how the day " +
             "reads, not what happened in it. Plain, human, never clinical, " +
-            "never a compliment, never advice.",
+            "never a compliment, never advice." + NO_EM_DASHES,
         },
         { role: "user", content: `Today's posts:\n${postLines}` },
       ],

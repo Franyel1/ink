@@ -36,6 +36,8 @@ Ink can read your posts and write reflection questions that feel like the notebo
 
 Every new post is quietly analyzed (summary, sentiment, topics → the `ai_*` columns on `posts`) using GPT-4.1 mini. When you run low on reflection questions, the same model writes new ones from your recent posts, profile, and past answers — and rewrites a running `notebook_memory` note about you (`profiles.notebook_memory`) each time, so later questions can dig into whatever's still vague instead of just avoiding repeats. Without the key, everything degrades gracefully — the app works exactly as before.
 
+Because that note is a model-written description of you, onboarding says so before it asks anything, and Profile → About shows the current text with a "Forget it" that nulls the column. It refills from your posts the next time questions are generated.
+
 ## Offline
 
 Ink is written on phones, which means it gets opened on trains and in basements. A service worker ([`public/sw.js`](public/sw.js)) caches the app shell and its build assets, so the app opens with no network; the last feed you loaded is kept in IndexedDB and shown in place of a spinner, marked as offline.
@@ -57,7 +59,7 @@ Open the deployed site in Safari → Share → **Add to Home Screen**. Ink runs 
 ## Structure
 
 - `src/app/login` — sign in / sign up
-- `src/app/onboarding` — first-run questionnaire (stored on `profiles` for future AI use)
+- `src/app/onboarding` — first run: what the notebook does, then eight questions that seed `profiles`, a first goal, a first want, and a letter a year out
 - `src/app/(tabs)/feed` — timeline, composer bottom sheet, search overlay
 - `src/app/(tabs)/reflect` — immersive one-question-at-a-time reflection flow
 - `src/app/(tabs)/profile` — profile, editable answers (with change tracking), saved posts

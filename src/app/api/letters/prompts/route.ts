@@ -3,12 +3,13 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
+import { NO_EM_DASHES } from "@/lib/aiStyle";
 
 const PromptsSchema = z.object({
   prompts: z
     .array(z.string())
     .describe(
-      "3-5 short things worth addressing in a letter to their future self — " +
+      "3-5 short things worth addressing in a letter to their future self, " +
         "questions or angles, not sentences for them to sign their name to. " +
         "Each under 15 words, second person. Draw only from what's actually " +
         "in their record below; don't invent goals or events."
@@ -61,8 +62,8 @@ export async function POST() {
           content:
             "You suggest things worth addressing in someone's letter to their " +
             "future self, based on what's actually on record about them. You " +
-            "never write the letter itself — only angles or questions for them " +
-            "to write about in their own words.",
+            "never write the letter itself, only angles or questions for them " +
+            "to write about in their own words." + NO_EM_DASHES,
         },
         { role: "user", content: `About this person:\n${context}` },
       ],

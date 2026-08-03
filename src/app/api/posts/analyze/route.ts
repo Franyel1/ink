@@ -2,7 +2,34 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
+
+/** Keep the vision call cheap: shrink and re-encode before sending. */
+const MAX_IMAGE_DIMENSION = 768;
+const JPEG_QUALITY = 65;
+const MAX_IMAGES_PER_POST = 4;
+
+async function compressImage(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const bytes = Buffer.from(await res.arrayBuffer());
+    const jpeg = await sharp(bytes)
+      .rotate()
+      .resize({
+        width: MAX_IMAGE_DIMENSION,
+        height: MAX_IMAGE_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: JPEG_QUALITY })
+      .toBuffer();
+    return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
 
 const AnalysisSchema = z.object({
   comment: z
@@ -85,7 +112,7 @@ export async function POST(request: Request) {
     await Promise.all([
       supabase
         .from("posts")
-        .select("id, content, post_type, ai_processed")
+        .select("id, content, post_type, ai_processed, post_images(image_url)")
         .eq("id", postId)
         .maybeSingle(),
       supabase
@@ -107,7 +134,8 @@ export async function POST(request: Request) {
         .select("id, name, relationship, notes, mention_count")
         .order("last_mentioned_at", { ascending: false }),
     ]);
-  if (!post || !post.content) {
+  const images = (post?.post_images ?? []) as { image_url: string }[];
+  if (!post || (!post.content && images.length === 0)) {
     return NextResponse.json({ error: "post not found" }, { status: 404 });
   }
   if (post.ai_processed) {
@@ -144,6 +172,12 @@ export async function POST(request: Request) {
     )
     .join("\n");
 
+  const compressedImages = (
+    await Promise.all(
+      images.slice(0, MAX_IMAGES_PER_POST).map((img) => compressImage(img.image_url))
+    )
+  ).filter((uri): uri is string => uri !== null);
+
   const openai = new OpenAI();
 
   try {
@@ -153,27 +187,49 @@ export async function POST(request: Request) {
         {
           role: "system",
           content:
-            "You read short personal journal posts for a private, ink-and-paper " +
-            "journal app and leave a comment on them — the way a close friend who " +
-            "actually knows this person's history would, not a stranger summarizing " +
-            "text. You're given background on who they are; use it to shape your " +
-            "tone and what you pick up on, but don't force a connection to their " +
+            "You read short personal journal posts — sometimes with photos — for " +
+            "a private, ink-and-paper journal app, and leave a comment on them — " +
+            "the way a close friend who actually knows this person's history " +
+            "would, not a stranger summarizing text or describing a picture. " +
+            "You're given background on who they are; use it to shape your tone " +
+            "and what you pick up on, but don't force a connection to their " +
             "background if there isn't a real one — most comments should just be a " +
             "genuine reaction to this post on its own.\n\n" +
-            "You also keep a small record of people who come up in their posts. " +
-            "Reuse a person's existing entry (matching by name) and rewrite their " +
-            "notes to fold in anything new, rather than starting over. Don't list " +
-            "someone who isn't a real, specific person actually mentioned.",
+            "Read casual and internet slang the way a fluent user of it would, " +
+            "not literally — e.g. 'this ate' / 'I ate with this' means the thing " +
+            "was excellent, not that they ate alongside someone; 'no cap' means " +
+            "for real; 'lowkey'/'highkey' softens or intensifies a claim; 'bet' " +
+            "means agreed. If a phrase reads oddly as literal grammar but makes " +
+            "sense as slang, assume slang. When genuinely unsure what something " +
+            "means, react to what's clear in the post rather than asking them to " +
+            "clarify — a comment should never make the user feel like they wrote " +
+            "something confusing.\n\n" +
+            "You also keep a small record of people who come up in their posts or " +
+            "photos. Reuse a person's existing entry (matching by name) and " +
+            "rewrite their notes to fold in anything new, rather than starting " +
+            "over. Don't list someone who isn't a real, specific person actually " +
+            "mentioned or clearly identifiable.",
         },
         {
           role: "user",
-          content:
-            `About this person:\n${backgroundLines || "(nothing yet)"}\n\n` +
-            `Their recent posts, for context on patterns (newest first):\n${
-              recentLines || "(none yet)"
-            }\n\n` +
-            `People already on record:\n${peopleLines || "(none yet)"}\n\n` +
-            `Analyze this new journal post (type: ${post.post_type}):\n\n${post.content}`,
+          content: [
+            {
+              type: "text",
+              text:
+                `About this person:\n${backgroundLines || "(nothing yet)"}\n\n` +
+                `Their recent posts, for context on patterns (newest first):\n${
+                  recentLines || "(none yet)"
+                }\n\n` +
+                `People already on record:\n${peopleLines || "(none yet)"}\n\n` +
+                `Analyze this new journal post (type: ${post.post_type})${
+                  compressedImages.length > 0 ? ", including the attached photo(s)" : ""
+                }:\n\n${post.content || "(no text — just the photo(s))"}`,
+            },
+            ...compressedImages.map((url) => ({
+              type: "image_url" as const,
+              image_url: { url },
+            })),
+          ],
         },
       ],
       response_format: zodResponseFormat(AnalysisSchema, "post_analysis"),

@@ -37,7 +37,6 @@ export function AICommentPopup({
   post: Post;
   onClose: () => void;
 }) {
-  const hasNotice = Boolean(post.ai_summary);
   const [view, setView] = useState<"comment" | "notice">("comment");
 
   useEffect(() => {
@@ -55,28 +54,32 @@ export function AICommentPopup({
         className="fade-in absolute inset-0 bg-black/60 backdrop-blur-sm"
       />
       <div className="pop-in relative w-full max-w-sm rounded-3xl border border-border bg-surface-raised p-6 shadow-2xl shadow-black/50">
-        {/* Reads like a comment: a small avatar-ish sparkle, a name, then the reaction */}
+        {/* Reads like a comment: a small avatar-ish sparkle, a name, then the reaction.
+            The sparkle itself is the toggle between the comment and what it noticed. */}
         <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-ink">
+          <button
+            type="button"
+            aria-label={
+              view === "comment" ? "See what it noticed" : "Back to comment"
+            }
+            onClick={() =>
+              setView((v) => (v === "comment" ? "notice" : "comment"))
+            }
+            className={`pressable flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-ink ${
+              view === "comment" ? "sparkle-pulse" : ""
+            }`}
+          >
             <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
               <path d="M12 2.5l1.7 5.3a3 3 0 001.9 1.9l5.3 1.7-5.3 1.7a3 3 0 00-1.9 1.9L12 20.3l-1.7-5.3a3 3 0 00-1.9-1.9L3.1 11.4l5.3-1.7a3 3 0 001.9-1.9L12 2.5z" />
             </svg>
-          </span>
+          </button>
           <div className="min-w-0 flex-1 pt-0.5">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold">Ink</p>
-              {hasNotice && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setView((v) => (v === "comment" ? "notice" : "comment"))
-                  }
-                  className="pressable shrink-0 rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted"
-                >
-                  {view === "comment" ? "See what it noticed" : "Back to comment"}
-                </button>
-              )}
-            </div>
+            <p className="text-sm font-semibold">
+              Ink
+              <span className="ml-2 text-[11px] font-normal text-faint">
+                tap the spark to switch
+              </span>
+            </p>
             <p
               key={view}
               data-selectable
@@ -86,7 +89,9 @@ export function AICommentPopup({
                   : "text-xs italic text-faint"
               }`}
             >
-              {view === "comment" ? post.ai_comment : post.ai_summary}
+              {view === "comment"
+                ? post.ai_comment
+                : post.ai_summary || "Nothing stood out beyond this post itself."}
             </p>
           </div>
         </div>

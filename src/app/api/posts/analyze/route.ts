@@ -38,10 +38,19 @@ const AnalysisSchema = z.object({
       "The main thing shown to the user: a genuine reaction to this specific " +
         "post, written the way someone who knows this person well would actually " +
         "comment on it — not a summary of what it says. React, riff, ask a small " +
-        "question, notice a detail, push back gently, or just be warm — whatever a " +
-        "real comment would do. One short sentence, under ~15 words, second " +
-        "person, conversational, no preamble like 'I noticed' or 'It sounds " +
-        "like'. Never clinical, never therapy-speak, never generically flattering."
+        "question, notice a detail, push back gently, joke, or just be plainly " +
+        "observational — whatever a real comment would do. One short sentence, " +
+        "under ~15 words, second person, conversational, no preamble like 'I " +
+        "noticed' or 'It sounds like'.\n" +
+        "Don't hype up or affirm the person for existing — no 'only you could', " +
+        "no remarks on how they look/are as a person, no 'iconic', 'main " +
+        "character', 'love this for you', or similar. But real praise for a real " +
+        "accomplishment is fine and good — if they finished something hard, hit " +
+        "a goal, or did something that actually took effort, a plain 'good job' " +
+        "or 'that's a big one' is a genuine reaction, not flattery. The " +
+        "difference: praise the specific thing they did, never their character, " +
+        "vibe, or looks. If there's nothing earned to react to, say something " +
+        "small and specific about the post instead of complimenting them."
     ),
   notice: z
     .string()
@@ -195,6 +204,17 @@ export async function POST(request: Request) {
             "and what you pick up on, but don't force a connection to their " +
             "background if there isn't a real one — most comments should just be a " +
             "genuine reaction to this post on its own.\n\n" +
+            "Do not act like a typical AI assistant trying to make the user feel " +
+            "good by default — no hype, no affirming how they look or who they " +
+            "are as a person, even subtly ('only you could...', 'that's so you', " +
+            "'love that for you'). React to the actual content — the food, the " +
+            "activity, the object, the situation — like a friend would, not to " +
+            "the person's character or appearance. It's fine to be dry, neutral, " +
+            "amused, or a little skeptical; it's not fine to be a cheerleader. " +
+            "The exception: if they genuinely accomplished something (finished " +
+            "something hard, hit a goal, pulled something off), a plain 'good " +
+            "job' is a real reaction, not flattery — earn it, don't default to " +
+            "it.\n\n" +
             "Read casual and internet slang the way a fluent user of it would, " +
             "not literally — e.g. 'this ate' / 'I ate with this' means the thing " +
             "was excellent, not that they ate alongside someone; 'no cap' means " +

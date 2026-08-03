@@ -5,6 +5,13 @@ import { createClient } from "@/lib/supabase/client";
 import { REFLECT_QUESTIONS, type ReflectQuestion } from "@/lib/reflectQuestions";
 import type { Reflection } from "@/lib/types";
 import { useKeyboardInset } from "@/lib/useKeyboardInset";
+import { useSpeechToText } from "@/lib/useSpeechToText";
+import { fetchLatestRecap, type Recap } from "@/lib/recaps";
+import RecapCard from "@/components/RecapCard";
+
+function recapDismissKey(periodStart: string) {
+  return `ink-recap-dismissed-${periodStart}`;
+}
 
 /**
  * One continuous journal page: answered questions stack above and stay
@@ -20,9 +27,15 @@ export default function ReflectFlow() {
   const [draft, setDraft] = useState("");
   const [absorbing, setAbsorbing] = useState(false);
   const [error, setError] = useState(false);
+  const [recap, setRecap] = useState<Recap | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const generating = useRef(false);
+  const recapRequested = useRef(false);
   const keyboardInset = useKeyboardInset();
+
+  const speech = useSpeechToText((chunk) => {
+    setDraft((d) => (d && !d.endsWith(" ") ? d + " " : d) + chunk);
+  });
 
   const loadGenerated = useCallback(() => {
     const supabase = createClient();
@@ -91,6 +104,24 @@ export default function ReflectFlow() {
         generating.current = false;
       });
   }, [unansweredCount, saved, loadGenerated]);
+
+  // Ask the server to write last month's recap if it hasn't been made yet
+  // (no-op once it exists), then load whatever recap is on record.
+  useEffect(() => {
+    if (recapRequested.current) return;
+    recapRequested.current = true;
+    fetch("/api/recap/generate", { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        fetchLatestRecap()
+          .then((r) => {
+            if (r && !localStorage.getItem(recapDismissKey(r.period_start))) {
+              setRecap(r);
+            }
+          })
+          .catch(() => {});
+      });
+  }, []);
 
   // Bring each new question to the top of the page as it appears
   const answeredCount = answered.length;
@@ -169,6 +200,16 @@ export default function ReflectFlow() {
           </div>
         ) : (
           <>
+            {recap && (
+              <RecapCard
+                recap={recap}
+                onDismiss={() => {
+                  localStorage.setItem(recapDismissKey(recap.period_start), "1");
+                  setRecap(null);
+                }}
+              />
+            )}
+
             {/* The page so far */}
             {answered.map((q, i) => (
               <AnsweredEntry
@@ -213,6 +254,20 @@ export default function ReflectFlow() {
                       <p className="text-xs text-red-400/80">
                         The ink didn&apos;t take. Try again.
                       </p>
+                    ) : speech.supported ? (
+                      <button
+                        type="button"
+                        aria-label={speech.listening ? "Stop dictating" : "Dictate"}
+                        onClick={speech.toggle}
+                        className={`pressable rounded-full p-1.5 ${
+                          speech.listening ? "sparkle-pulse text-red-400" : "text-faint"
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-[18px] w-[18px]">
+                          <rect x="9" y="3" width="6" height="11" rx="3" />
+                          <path strokeLinecap="round" d="M5 11a7 7 0 0014 0M12 18v3" />
+                        </svg>
+                      </button>
                     ) : (
                       <span />
                     )}

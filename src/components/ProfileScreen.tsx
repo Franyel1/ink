@@ -24,6 +24,55 @@ const FIELD_LABELS: Record<EditableField, string> = {
   improvement_goal: "One thing you want to improve",
 };
 
+type Sentiment = "positive" | "negative" | "mixed" | "neutral";
+
+const SENTIMENT_LABEL: Record<Sentiment, string> = {
+  positive: "Warm",
+  negative: "Heavy",
+  mixed: "Mixed",
+  neutral: "Even",
+};
+
+interface Trends {
+  total: number;
+  sentimentCounts: Record<Sentiment, number>;
+  topTopics: { topic: string; count: number }[];
+}
+
+function computeTrends(
+  rows: { ai_sentiment: string | null; ai_topics: unknown }[]
+): Trends {
+  const sentimentCounts: Record<Sentiment, number> = {
+    positive: 0,
+    negative: 0,
+    mixed: 0,
+    neutral: 0,
+  };
+  const topicCounts = new Map<string, number>();
+  let total = 0;
+
+  for (const row of rows) {
+    if (row.ai_sentiment && row.ai_sentiment in sentimentCounts) {
+      sentimentCounts[row.ai_sentiment as Sentiment]++;
+      total++;
+    }
+    if (Array.isArray(row.ai_topics)) {
+      for (const topic of row.ai_topics) {
+        if (typeof topic === "string") {
+          topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1);
+        }
+      }
+    }
+  }
+
+  const topTopics = [...topicCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([topic, count]) => ({ topic, count }));
+
+  return { total, sentimentCounts, topTopics };
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -32,7 +81,8 @@ export default function ProfileScreen() {
   const [editValue, setEditValue] = useState("");
   const [editReason, setEditReason] = useState("");
   const [wasMistake, setWasMistake] = useState(false);
-  const [section, setSection] = useState<"about" | "saved">("about");
+  const [section, setSection] = useState<"about" | "saved" | "trends">("about");
+  const [trends, setTrends] = useState<Trends | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
@@ -42,16 +92,24 @@ export default function ProfileScreen() {
       .getUser()
       .then(async ({ data: { user } }) => {
         if (!user) return;
-        const [{ data: prof }, { data: pinned }] = await Promise.all([
-          supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
-          supabase
-            .from("posts")
-            .select(POST_SELECT)
-            .eq("is_pinned", true)
-            .order("created_at", { ascending: false }),
-        ]);
+        const [{ data: prof }, { data: pinned }, { data: recent }] =
+          await Promise.all([
+            supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+            supabase
+              .from("posts")
+              .select(POST_SELECT)
+              .eq("is_pinned", true)
+              .order("created_at", { ascending: false }),
+            supabase
+              .from("posts")
+              .select("ai_sentiment, ai_topics")
+              .eq("ai_processed", true)
+              .order("created_at", { ascending: false })
+              .limit(60),
+          ]);
         if (prof) setProfile(prof as Profile);
         setPinnedPosts((pinned ?? []) as Post[]);
+        setTrends(computeTrends(recent ?? []));
       })
       .catch(() => setLoadError(true));
   }, []);
@@ -187,7 +245,7 @@ export default function ProfileScreen() {
 
       {/* Section switch */}
       <div className="mt-8 flex justify-center gap-8 border-b border-border/60 text-sm">
-        {(["about", "saved"] as const).map((s) => (
+        {(["about", "trends", "saved"] as const).map((s) => (
           <button
             key={s}
             type="button"
@@ -198,7 +256,11 @@ export default function ProfileScreen() {
                 : "text-faint"
             }`}
           >
-            {s === "about" ? "About you" : `Saved (${pinnedPosts.length})`}
+            {s === "about"
+              ? "About you"
+              : s === "trends"
+                ? "Trends"
+                : `Saved (${pinnedPosts.length})`}
           </button>
         ))}
       </div>
@@ -292,6 +354,61 @@ export default function ProfileScreen() {
           >
             Sign out
           </button>
+        </div>
+      ) : section === "trends" ? (
+        <div className="px-6 pt-4">
+          {!trends || trends.total === 0 ? (
+            <p className="mt-14 px-4 text-center text-sm text-faint">
+              Once a few posts have been looked at, patterns will start
+              showing up here.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs uppercase tracking-widest text-faint">
+                How recent posts read
+              </p>
+              <div className="mt-3 space-y-2.5">
+                {(["positive", "neutral", "mixed", "negative"] as const).map(
+                  (s) => {
+                    const count = trends.sentimentCounts[s];
+                    const pct = Math.round((count / trends.total) * 100);
+                    return (
+                      <div key={s}>
+                        <div className="flex items-center justify-between text-xs text-faint">
+                          <span>{SENTIMENT_LABEL[s]}</span>
+                          <span>{pct}%</span>
+                        </div>
+                        <div className="mt-1 h-1.5 w-full rounded-full bg-border/40">
+                          <div
+                            className="h-full rounded-full bg-foreground transition-all duration-700"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+
+              {trends.topTopics.length > 0 && (
+                <>
+                  <p className="mt-8 text-xs uppercase tracking-widest text-faint">
+                    What comes up most
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {trends.topTopics.map(({ topic, count }) => (
+                      <span
+                        key={topic}
+                        className="rounded-full border border-border px-3 py-1 text-xs text-muted"
+                      >
+                        {topic} · {count}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       ) : (
         <div className="pt-2">

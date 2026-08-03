@@ -115,6 +115,18 @@ create table if not exists public.post_people (
   primary key (post_id, person_id)
 );
 
+-- Monthly, AI-written recaps built from a completed calendar month's posts
+-- and reflections. One per user per month.
+create table if not exists public.recaps (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) not null,
+  period_start date not null,
+  period_end date not null,
+  content text not null,
+  created_at timestamptz default now(),
+  unique (user_id, period_start)
+);
+
 create index if not exists posts_user_created_idx
   on public.posts (user_id, created_at desc);
 
@@ -130,6 +142,7 @@ alter table public.reflections enable row level security;
 alter table public.reflect_questions enable row level security;
 alter table public.people enable row level security;
 alter table public.post_people enable row level security;
+alter table public.recaps enable row level security;
 
 -- reflect_questions
 create policy "reflect_questions select own" on public.reflect_questions
@@ -228,6 +241,12 @@ create policy "post_people insert own" on public.post_people
   for insert with check (auth.uid() = user_id);
 create policy "post_people delete own" on public.post_people
   for delete using (auth.uid() = user_id);
+
+-- recaps
+create policy "recaps select own" on public.recaps
+  for select using (auth.uid() = user_id);
+create policy "recaps insert own" on public.recaps
+  for insert with check (auth.uid() = user_id);
 
 -- ========== Auto-create profile on signup ==========
 

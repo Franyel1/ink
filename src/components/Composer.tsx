@@ -7,6 +7,7 @@ import type { Post, PostType, Tag } from "@/lib/types";
 import { POST_TYPES } from "@/lib/types";
 import { createPost, updatePost, createTag, type PostInput } from "@/lib/posts";
 import { useKeyboardInset } from "@/lib/useKeyboardInset";
+import { useSpeechToText } from "@/lib/useSpeechToText";
 import Avatar from "@/components/Avatar";
 
 interface Author {
@@ -74,6 +75,10 @@ export default function Composer({
   }
 
   useEffect(autoresize, [content]);
+
+  const speech = useSpeechToText((chunk) => {
+    setContent((c) => (c && !c.endsWith(" ") ? c + " " : c) + chunk);
+  });
 
   function pickFiles(list: FileList | null) {
     if (!list) return;
@@ -335,6 +340,21 @@ export default function Composer({
             e.target.value = "";
           }}
         />
+        {speech.supported && (
+          <button
+            type="button"
+            aria-label={speech.listening ? "Stop dictating" : "Dictate"}
+            onClick={speech.toggle}
+            className={`pressable rounded-full p-2.5 ${
+              speech.listening ? "sparkle-pulse text-red-400" : "text-muted"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-[22px] w-[22px]">
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+              <path strokeLinecap="round" d="M5 11a7 7 0 0014 0M12 18v3" />
+            </svg>
+          </button>
+        )}
         <button
           type="button"
           aria-label="Tags"

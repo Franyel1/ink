@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import PostCard, { type PostAuthor } from "@/components/PostCard";
 import Composer from "@/components/Composer";
 import SearchOverlay from "@/components/SearchOverlay";
+import OnThisDay from "@/components/OnThisDay";
 
 export default function FeedScreen() {
   const [posts, setPosts] = useState<Post[] | null>(null);
@@ -127,6 +128,7 @@ export default function FeedScreen() {
             </p>
           </div>
         )}
+        {posts !== null && posts.length > 0 && <OnThisDay posts={posts} />}
         {posts?.map((post) => (
           <PostCard
             key={post.id}

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Post, Tag } from "@/lib/types";
 import { fetchPosts, fetchTags, deletePost, setPinned } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
+import { usePullToRefresh } from "@/lib/usePullToRefresh";
 import PostCard, { type PostAuthor } from "@/components/PostCard";
 import Composer from "@/components/Composer";
 import SearchOverlay from "@/components/SearchOverlay";
@@ -20,9 +21,9 @@ export default function FeedScreen() {
   const [editing, setEditing] = useState<Post | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadFeed = useCallback(async () => {
     const supabase = createClient();
     const loadAuthor = supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return null;
@@ -33,22 +34,22 @@ export default function FeedScreen() {
         .maybeSingle();
       return data;
     });
-    Promise.all([fetchPosts(), fetchTags(), loadAuthor])
-      .then(([p, t, prof]) => {
-        if (cancelled) return;
-        setPosts(p);
-        setTags(t);
-        if (prof)
-          setAuthor({
-            name: prof.display_name,
-            avatarUrl: prof.profile_picture_url,
-          });
-      })
-      .catch(() => !cancelled && setLoadError(true));
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const [p, t, prof] = await Promise.all([fetchPosts(), fetchTags(), loadAuthor]);
+      setPosts(p);
+      setTags(t);
+      if (prof) setAuthor({ name: prof.display_name, avatarUrl: prof.profile_picture_url });
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    }
   }, []);
+
+  useEffect(() => {
+    loadFeed();
+  }, [loadFeed]);
+
+  const { pull, pulling, refreshing } = usePullToRefresh(scrollRef, loadFeed);
 
   const handleEdit = useCallback((post: Post) => {
     setEditing(post);
@@ -109,36 +110,56 @@ export default function FeedScreen() {
       </header>
 
       {/* Feed */}
-      <div className="scroll-area flex-1 pb-28">
-        {loadError && (
-          <p className="mt-16 text-center text-sm text-faint">
-            Couldn&apos;t load your ink. Pull yourself together and reopen.
-          </p>
-        )}
-        {posts === null && !loadError && (
-          <div className="mt-16 flex justify-center">
-            <span className="font-script text-2xl text-faint">…</span>
-          </div>
-        )}
-        {posts !== null && posts.length === 0 && (
-          <div className="rise-in mt-20 px-10 text-center">
-            <p className="font-script text-3xl text-muted">A blank page.</p>
-            <p className="mt-3 text-sm text-faint">
-              Write anything — a thought, a moment, a recipe, a memory.
+      <div ref={scrollRef} className="scroll-area relative flex-1 bg-background pb-28">
+        {/* Revealed as the content below slides down — a plain black gap with the spinner in it */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex h-16 items-center justify-center">
+          <span
+            className={`text-lg text-faint transition-opacity ${
+              pull > 4 ? "opacity-100" : "opacity-0"
+            } ${refreshing ? "animate-spin" : ""}`}
+            style={!refreshing ? { transform: `rotate(${Math.min(pull * 2.4, 200)}deg)` } : undefined}
+          >
+            {refreshing ? "◌" : "↓"}
+          </span>
+        </div>
+
+        <div
+          className="relative bg-background"
+          style={{
+            transform: `translateY(${pull}px)`,
+            transition: pulling ? "none" : "transform 250ms cubic-bezier(0.22,1,0.36,1)",
+          }}
+        >
+          {loadError && (
+            <p className="mt-16 text-center text-sm text-faint">
+              Couldn&apos;t load your ink. Pull yourself together and reopen.
             </p>
-          </div>
-        )}
-        {posts !== null && posts.length > 0 && <OnThisDay posts={posts} />}
-        {posts?.map((post) => (
-          <PostCard
-            key={post.id}
-            post={post}
-            author={author}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onTogglePin={handleTogglePin}
-          />
-        ))}
+          )}
+          {posts === null && !loadError && (
+            <div className="mt-16 flex justify-center">
+              <span className="font-script text-2xl text-faint">…</span>
+            </div>
+          )}
+          {posts !== null && posts.length === 0 && (
+            <div className="rise-in mt-20 px-10 text-center">
+              <p className="font-script text-3xl text-muted">A blank page.</p>
+              <p className="mt-3 text-sm text-faint">
+                Write anything — a thought, a moment, a recipe, a memory.
+              </p>
+            </div>
+          )}
+          {posts !== null && posts.length > 0 && <OnThisDay posts={posts} />}
+          {posts?.map((post) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              author={author}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onTogglePin={handleTogglePin}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Floating composer button */}

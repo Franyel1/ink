@@ -1,5 +1,5 @@
-import ReflectFlow from "@/components/ReflectFlow";
+import ReflectDashboard from "@/components/ReflectDashboard";
 
 export default function ReflectPage() {
-  return <ReflectFlow />;
+  return <ReflectDashboard />;
 }

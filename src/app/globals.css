@@ -32,9 +32,17 @@
   --font-script: var(--font-caveat), cursive;
 }
 
-/* ---- Fixed full-screen app shell, not a scrollable website ---- */
+/* ---- Fixed full-screen app shell, not a scrollable website ----
+   Both html and body are pinned to the visual viewport with
+   position: fixed. Without this, iOS Safari (especially once added to
+   the home screen) can let the document grow taller than the visible
+   viewport and rubber-band the whole page, which leaves fixed children
+   like the tab bar not flush with the real bottom edge until the page
+   settles. */
 html,
 body {
+  position: fixed;
+  inset: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;

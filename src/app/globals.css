@@ -6,8 +6,14 @@
   --surface-raised: #161616;
   --border: #2a2a2a;
   --foreground: #f5f5f5;
-  --muted: #8b8b8b;
-  --faint: #565656;
+  /* Three steps of quiet, all of which have to stay legible. --faint carries
+     the small uppercase labels (9-11px) that letter-spacing already thins out,
+     so it can't lean on the WCAG large-text exemption: it was #565656 at
+     2.71:1 against the background, which read as decoration rather than text.
+     Both now clear 4.5:1 comfortably while staying far enough apart to still
+     read as a hierarchy. */
+  --muted: #adadad; /* 8.9:1 */
+  --faint: #8a8a8a; /* 5.8:1 */
   --accent: #f5f5f5; /* overridden by profile color */
   --paper: #f5f5f5;
   --ink: #090909;

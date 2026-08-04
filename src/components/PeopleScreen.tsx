@@ -4,14 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   fetchPeople,
-  fetchPostsForPerson,
   fetchMergeSuggestions,
   mergePeople,
   type Person,
-  type PersonPost,
   type MergeSuggestion,
 } from "@/lib/people";
 import { formatPostTime } from "@/lib/dates";
+import { describeGap, driftedPeople } from "@/lib/peopleContext";
 
 function suggestionDismissKey(keepId: string, mergeId: string) {
   return `ink-merge-dismissed-${[keepId, mergeId].sort().join("-")}`;
@@ -20,9 +19,6 @@ function suggestionDismissKey(keepId: string, mergeId: string) {
 export default function PeopleScreen() {
   const [people, setPeople] = useState<Person[] | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [posts, setPosts] = useState<Record<string, PersonPost[]>>({});
-  const [postsLoading, setPostsLoading] = useState<string | null>(null);
 
   const [suggestions, setSuggestions] = useState<MergeSuggestion[]>([]);
   const [confirmingSuggestion, setConfirmingSuggestion] = useState<string | null>(null);
@@ -76,29 +72,14 @@ export default function PeopleScreen() {
     }
   }
 
-  function toggle(person: Person) {
-    if (combineMode) {
-      setSelected((sel) =>
-        sel.includes(person.id)
-          ? sel.filter((id) => id !== person.id)
-          : sel.length < 2
-            ? [...sel, person.id]
-            : sel
-      );
-      return;
-    }
-    if (expanded === person.id) {
-      setExpanded(null);
-      return;
-    }
-    setExpanded(person.id);
-    if (!posts[person.id]) {
-      setPostsLoading(person.id);
-      fetchPostsForPerson(person.id)
-        .then((p) => setPosts((all) => ({ ...all, [person.id]: p })))
-        .catch(() => setPosts((all) => ({ ...all, [person.id]: [] })))
-        .finally(() => setPostsLoading(null));
-    }
+  function toggleSelected(person: Person) {
+    setSelected((sel) =>
+      sel.includes(person.id)
+        ? sel.filter((id) => id !== person.id)
+        : sel.length < 2
+          ? [...sel, person.id]
+          : sel
+    );
   }
 
   async function combineSelected() {
@@ -122,6 +103,63 @@ export default function PeopleScreen() {
     }
   }
 
+  const drifted = driftedPeople(people ?? []);
+
+  /** The card body, shared by the link and the combine-mode checkbox button. */
+  function card(person: Person) {
+    const isSelected = selected.includes(person.id);
+    return (
+      <>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-semibold">{person.name}</p>
+            {person.relationship && (
+              <p className="text-xs uppercase tracking-[0.15em] text-faint">
+                {person.relationship}
+              </p>
+            )}
+          </div>
+          {combineMode ? (
+            <span
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+                isSelected
+                  ? "border-foreground bg-foreground text-ink"
+                  : "border-border text-transparent"
+              }`}
+            >
+              ✓
+            </span>
+          ) : (
+            <span className="shrink-0 text-xs text-faint">
+              mentioned {person.mention_count}×
+            </span>
+          )}
+        </div>
+        {person.notes && (
+          <p
+            data-selectable
+            className="mt-2.5 whitespace-pre-wrap text-sm leading-relaxed text-foreground/85"
+          >
+            {person.notes}
+          </p>
+        )}
+        {!combineMode && (
+          <p className="mt-2.5 text-[11px] text-faint">
+            last came up {formatPostTime(person.last_mentioned_at)}
+          </p>
+        )}
+      </>
+    );
+  }
+
+  function cardClass(person: Person) {
+    return `pressable rise-in mb-4 block w-full rounded-2xl border p-4 text-left transition-colors ${
+      selected.includes(person.id)
+        ? "border-foreground bg-surface-raised"
+        : "border-border/60 bg-surface"
+    }`;
+  }
+
   return (
     <div className="scroll-area flex-1 pb-28">
       <header className="flex items-center justify-between gap-3 px-6 pb-2 pt-[calc(var(--safe-top)+2rem)]">
@@ -140,7 +178,6 @@ export default function PeopleScreen() {
               setCombineMode((v) => !v);
               setSelected([]);
               setConfirmingCombine(false);
-              setExpanded(null);
             }}
             className={`pressable shrink-0 rounded-full border px-3 py-1.5 text-xs ${
               combineMode
@@ -209,6 +246,32 @@ export default function PeopleScreen() {
             );
           })}
 
+        {/* People who were a real presence and then stopped coming up. The
+            notebook can only notice the silence; what to do about it isn't
+            its call, so this stays a list of names and nothing more. */}
+        {!combineMode && drifted.length > 0 && (
+          <div className="rise-in mb-5">
+            <p className="text-xs uppercase tracking-[0.15em] text-faint">
+              Gone quiet
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {drifted.map((person) => (
+                <Link
+                  key={person.id}
+                  href={`/people/${person.id}`}
+                  className="pressable rounded-full border border-border/70 px-3 py-1 text-xs text-muted"
+                >
+                  {person.name}
+                  <span className="text-faint">
+                    {" · "}
+                    {describeGap(person.last_mentioned_at)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         {loadError && (
           <p className="mt-10 text-center text-sm text-faint">
             Couldn&apos;t load this page. Try again in a bit.
@@ -227,91 +290,22 @@ export default function PeopleScreen() {
             </p>
           </div>
         )}
-        {people?.map((person) => {
-          const isOpen = expanded === person.id;
-          const isSelected = selected.includes(person.id);
-          return (
+        {people?.map((person) =>
+          combineMode ? (
             <button
               type="button"
               key={person.id}
-              onClick={() => toggle(person)}
-              className={`pressable rise-in mb-4 block w-full rounded-2xl border p-4 text-left transition-colors ${
-                isSelected
-                  ? "border-foreground bg-surface-raised"
-                  : "border-border/60 bg-surface"
-              }`}
+              onClick={() => toggleSelected(person)}
+              className={cardClass(person)}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-[15px] font-semibold">
-                    {person.name}
-                  </p>
-                  {person.relationship && (
-                    <p className="text-xs uppercase tracking-[0.15em] text-faint">
-                      {person.relationship}
-                    </p>
-                  )}
-                </div>
-                {combineMode ? (
-                  <span
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] ${
-                      isSelected
-                        ? "border-foreground bg-foreground text-ink"
-                        : "border-border text-transparent"
-                    }`}
-                  >
-                    ✓
-                  </span>
-                ) : (
-                  <span className="shrink-0 text-xs text-faint">
-                    mentioned {person.mention_count}×
-                  </span>
-                )}
-              </div>
-              {person.notes && (
-                <p
-                  data-selectable
-                  className="mt-2.5 whitespace-pre-wrap text-sm leading-relaxed text-foreground/85"
-                >
-                  {person.notes}
-                </p>
-              )}
-              {!combineMode && (
-                <p className="mt-2.5 text-[11px] text-faint">
-                  last came up {formatPostTime(person.last_mentioned_at)} ·{" "}
-                  {isOpen ? "hide posts" : "show posts"}
-                </p>
-              )}
-
-              {isOpen && !combineMode && (
-                <div className="fade-in mt-3 border-t border-border/40 pt-3">
-                  {postsLoading === person.id && (
-                    <p className="text-xs text-faint">…</p>
-                  )}
-                  {postsLoading !== person.id &&
-                    (posts[person.id]?.length ?? 0) === 0 && (
-                      <p className="text-xs text-faint">
-                        No posts found for them yet.
-                      </p>
-                    )}
-                  {posts[person.id]?.map((post) => (
-                    <div key={post.id} className="mb-2.5 last:mb-0">
-                      <p className="text-[11px] text-faint">
-                        {formatPostTime(post.created_at)}
-                      </p>
-                      <p
-                        data-selectable
-                        className="line-clamp-2 whitespace-pre-wrap text-sm text-foreground/80"
-                      >
-                        {post.content}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {card(person)}
             </button>
-          );
-        })}
+          ) : (
+            <Link key={person.id} href={`/people/${person.id}`} className={cardClass(person)}>
+              {card(person)}
+            </Link>
+          )
+        )}
       </div>
 
       {combineMode && selected.length === 2 && (

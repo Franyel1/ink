@@ -294,6 +294,9 @@ create policy "post_people select own" on public.post_people
   for select using (auth.uid() = user_id);
 create policy "post_people insert own" on public.post_people
   for insert with check (auth.uid() = user_id);
+-- Needed by mergePeople, which repoints a folded-away person's post links.
+create policy "post_people update own" on public.post_people
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "post_people delete own" on public.post_people
   for delete using (auth.uid() = user_id);
 

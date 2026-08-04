@@ -5,6 +5,7 @@ import { z } from "zod";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
 import { BELIEFS_RULE, NO_EM_DASHES } from "@/lib/aiStyle";
+import { formatPeopleLines } from "@/lib/peopleContext";
 
 /** Keep the vision call cheap: shrink and re-encode before sending. */
 const MAX_IMAGE_DIMENSION = 768;
@@ -160,7 +161,7 @@ export async function POST(request: Request) {
         .limit(10),
       supabase
         .from("people")
-        .select("id, name, relationship, notes, mention_count")
+        .select("id, name, relationship, notes, mention_count, last_mentioned_at")
         .order("last_mentioned_at", { ascending: false }),
     ]);
   const images = (post?.post_images ?? []) as { image_url: string }[];
@@ -192,14 +193,7 @@ export async function POST(request: Request) {
     .filter(Boolean)
     .join("\n");
 
-  const peopleLines = (people ?? [])
-    .map(
-      (p) =>
-        `- ${p.name}${p.relationship ? ` (${p.relationship})` : ""}: ${
-          p.notes || "(nothing noted yet)"
-        }`
-    )
-    .join("\n");
+  const peopleLines = formatPeopleLines(people ?? []);
 
   const compressedImages = (
     await Promise.all(

@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Post, PostType, Tag } from "@/lib/types";
 
 export const POST_SELECT =
-  "*, post_images(*), post_tags(tag_id, tags(*))";
+  "*, post_images(*), post_tags(tag_id, tags(*)), post_people(person_id, people(id, name))";
 
 export async function fetchPosts(): Promise<Post[]> {
   const supabase = createClient();

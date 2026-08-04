@@ -5,6 +5,11 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { BELIEFS_RULE, NO_EM_DASHES } from "@/lib/aiStyle";
 import { REFLECT_QUESTIONS } from "@/lib/reflectQuestions";
+import {
+  PEOPLE_RULE,
+  PERSON_CONTEXT_SELECT,
+  formatPeopleLines,
+} from "@/lib/peopleContext";
 
 const GenerationSchema = z.object({
   notebook_memory: z
@@ -45,26 +50,35 @@ export async function POST() {
   }
 
   // Everything below is RLS-scoped to this user.
-  const [{ data: posts }, { data: reflections }, { data: generated }, { data: profile }] =
-    await Promise.all([
-      supabase
-        .from("posts")
-        .select("content, post_type, ai_comment, ai_summary, ai_topics, created_at")
-        .order("created_at", { ascending: false })
-        .limit(30),
-      supabase.from("reflections").select("question_key, question, answer"),
-      supabase
-        .from("reflect_questions")
-        .select("question_key, question")
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("profiles")
-        .select(
-          "personality, beliefs, handling_good, handling_bad, improvement_goal, notebook_memory"
-        )
-        .eq("id", user.id)
-        .maybeSingle(),
-    ]);
+  const [
+    { data: posts },
+    { data: reflections },
+    { data: generated },
+    { data: profile },
+    { data: people },
+  ] = await Promise.all([
+    supabase
+      .from("posts")
+      .select("content, post_type, ai_comment, ai_summary, ai_topics, created_at")
+      .order("created_at", { ascending: false })
+      .limit(30),
+    supabase.from("reflections").select("question_key, question, answer"),
+    supabase
+      .from("reflect_questions")
+      .select("question_key, question")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("profiles")
+      .select(
+        "personality, beliefs, handling_good, handling_bad, improvement_goal, notebook_memory"
+      )
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("people")
+      .select(PERSON_CONTEXT_SELECT)
+      .order("mention_count", { ascending: false }),
+  ]);
 
   if (!posts || posts.length === 0) {
     return NextResponse.json({ generated: 0, skipped: "no posts yet" });
@@ -93,6 +107,8 @@ export async function POST() {
   const answeredLines = (reflections ?? [])
     .map((r) => `- Q: ${r.question}\n  A: ${r.answer.slice(0, 200)}`)
     .join("\n");
+
+  const peopleLines = formatPeopleLines(people ?? [], { withRecency: true });
 
   const askedBefore = [
     ...REFLECT_QUESTIONS.map((q) => q.question),
@@ -146,7 +162,12 @@ export async function POST() {
             "- Do not repeat or lightly rephrase any previously asked question.\n" +
             "- A question never asks them to reflect through a belief frame " +
             "unless their own posts already put it there. 'What is God teaching " +
-            "you here?' is an overstep even for someone who listed a faith." +
+            "you here?' is an overstep even for someone who listed a faith.\n" +
+            "- A question may reach for a relationship that's clearly present in " +
+            "the notebook, including one that's gone quiet, but it asks about " +
+            "their own experience of it, never for a status update on the other " +
+            "person, and it never names the person outright." +
+            PEOPLE_RULE +
             BELIEFS_RULE +
             NO_EM_DASHES,
         },
@@ -156,6 +177,9 @@ export async function POST() {
             `Notebook memory so far:\n${profile?.notebook_memory || "(nothing yet)"}\n\n` +
             `Onboarding answers:\n${profileLines || "(nothing yet)"}\n\n` +
             `Their recent posts (newest first):\n${postLines}\n\n` +
+            `People on record in their notebook:\n${
+              peopleLines || "(no one yet)"
+            }\n\n` +
             `Reflection questions they already answered:\n${answeredLines || "(none yet)"}\n\n` +
             `Questions already asked (do not repeat):\n- ${askedBefore}\n\n` +
             "Rewrite the notebook memory and write 3 new reflection questions for them.",

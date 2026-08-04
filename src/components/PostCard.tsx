@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import type { Post } from "@/lib/types";
 import { formatPostTime } from "@/lib/dates";
 import Avatar from "@/components/Avatar";
@@ -32,6 +33,9 @@ export default function PostCard({
   const [aiOpen, setAiOpen] = useState(false);
   const hasImages = post.post_images.length > 0;
   const tags = post.post_tags.map((pt) => pt.tags).filter(Boolean);
+  const people = (post.post_people ?? [])
+    .map((pp) => pp.people)
+    .filter((p): p is { id: string; name: string } => Boolean(p));
   const name = author.name || "You";
   const hasAiComment = Boolean(post.ai_comment);
 
@@ -116,6 +120,22 @@ export default function PostCard({
     </span>
   );
 
+  // Filled, so the people the notebook noticed read differently from the tags
+  // the user chose themselves.
+  const peopleRow = people.length > 0 && (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {people.map((person) => (
+        <Link
+          key={person.id}
+          href={`/people/${person.id}`}
+          className="pressable rounded-full bg-surface-raised px-2.5 py-0.5 text-[11px] text-muted"
+        >
+          {person.name}
+        </Link>
+      ))}
+    </div>
+  );
+
   const tagRow = tags.length > 0 && (
     <div className="mt-2 flex flex-wrap gap-1.5">
       {tags.map((tag) => (
@@ -156,6 +176,7 @@ export default function PostCard({
           >
             {post.content}
           </p>
+          {peopleRow}
           {tagRow}
         </div>
         {aiOpen && (
@@ -215,7 +236,10 @@ export default function PostCard({
           {post.content}
         </p>
       )}
-      <div className="px-4">{tagRow}</div>
+      <div className="px-4">
+        {peopleRow}
+        {tagRow}
+      </div>
       {aiOpen && (
         <AICommentPopup post={post} onClose={() => setAiOpen(false)} />
       )}

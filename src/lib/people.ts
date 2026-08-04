@@ -21,18 +21,30 @@ export async function fetchPeople(): Promise<Person[]> {
   return (data ?? []) as Person[];
 }
 
+export async function fetchPerson(id: string): Promise<Person | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("people")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Person | null) ?? null;
+}
+
 export interface PersonPost {
   id: string;
   content: string;
   post_type: string;
   created_at: string;
+  ai_sentiment: "positive" | "negative" | "mixed" | "neutral" | null;
 }
 
 export async function fetchPostsForPerson(personId: string): Promise<PersonPost[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("post_people")
-    .select("posts(id, content, post_type, created_at)")
+    .select("posts(id, content, post_type, created_at, ai_sentiment)")
     .eq("person_id", personId)
     .order("created_at", { ascending: false, referencedTable: "posts" });
   if (error) throw error;

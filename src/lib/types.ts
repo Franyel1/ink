@@ -72,6 +72,12 @@ export interface Post {
   updated_at: string;
   post_images: PostImage[];
   post_tags: { tag_id: string; tags: Tag }[];
+  /**
+   * Who the AI picked up on in this post. Optional because posts cached to
+   * IndexedDB before this existed come back without it, and because a post is
+   * only linked to anyone once `posts/analyze` has run.
+   */
+  post_people?: { person_id: string; people: { id: string; name: string } | null }[];
   ai_processed: boolean | null;
   ai_comment: string | null;
   ai_summary: string | null;

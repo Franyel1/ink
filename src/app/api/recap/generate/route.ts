@@ -4,6 +4,7 @@ import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
 import { NO_EM_DASHES } from "@/lib/aiStyle";
+import { PEOPLE_RULE } from "@/lib/peopleContext";
 
 const RecapSchema = z.object({
   recap: z
@@ -53,7 +54,7 @@ export async function POST() {
     return NextResponse.json({ skipped: "already generated" });
   }
 
-  const [{ data: posts }, { data: reflections }, { data: profile }] =
+  const [{ data: posts }, { data: reflections }, { data: profile }, { data: mentions }] =
     await Promise.all([
       supabase
         .from("posts")
@@ -72,6 +73,14 @@ export async function POST() {
         .select("notebook_memory")
         .eq("id", user.id)
         .maybeSingle(),
+      // Who actually came up that month, counted from the post links rather
+      // than from people.mention_count, which is lifetime and would let
+      // someone who was central a year ago outrank this month's real presence.
+      supabase
+        .from("post_people")
+        .select("people(name, relationship, notes), posts!inner(created_at)")
+        .gte("posts.created_at", start)
+        .lt("posts.created_at", `${end}T23:59:59`),
     ]);
 
   if (!posts || posts.length < 3) {
@@ -91,6 +100,37 @@ export async function POST() {
     .map((r) => `- Q: ${r.question}\n  A: ${r.answer.slice(0, 200)}`)
     .join("\n");
 
+  const monthPeople = new Map<
+    string,
+    { relationship: string | null; notes: string | null; count: number }
+  >();
+  for (const row of (mentions ?? []) as unknown as {
+    people: { name: string; relationship: string | null; notes: string | null } | null;
+  }[]) {
+    if (!row.people) continue;
+    const seen = monthPeople.get(row.people.name);
+    if (seen) {
+      seen.count += 1;
+    } else {
+      monthPeople.set(row.people.name, {
+        relationship: row.people.relationship,
+        notes: row.people.notes,
+        count: 1,
+      });
+    }
+  }
+  const peopleLines = [...monthPeople.entries()]
+    .sort((a, b) => b[1].count - a[1].count)
+    .map(
+      ([name, p]) =>
+        `- ${name}${p.relationship ? ` (${p.relationship})` : ""}: came up in ${
+          p.count
+        } post${p.count === 1 ? "" : "s"} this month. ${
+          p.notes || "(nothing noted yet)"
+        }`
+    )
+    .join("\n");
+
   const openai = new OpenAI();
 
   try {
@@ -105,7 +145,9 @@ export async function POST() {
             "Same voice as commenting on a single post: a friend who actually " +
             "read this, not a stranger summarizing. Do not hype up the person " +
             "or affirm who they are, react to what actually happened. Read " +
-            "casual/internet slang contextually, not literally." + NO_EM_DASHES,
+            "casual/internet slang contextually, not literally." +
+            PEOPLE_RULE +
+            NO_EM_DASHES,
         },
         {
           role: "user",
@@ -114,6 +156,9 @@ export async function POST() {
               profile?.notebook_memory || "(nothing yet)"
             }\n\n` +
             `Posts from ${start} to ${end}:\n${postLines}\n\n` +
+            `People who came up that month, most present first:\n${
+              peopleLines || "(no one on record)"
+            }\n\n` +
             `Reflections answered that month:\n${reflectionLines || "(none)"}\n\n` +
             "Write the recap for this month.",
         },

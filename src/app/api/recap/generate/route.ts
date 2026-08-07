@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
-import { NO_EM_DASHES } from "@/lib/aiStyle";
+import { BELIEFS_RULE, NO_EM_DASHES, VALUES_RULE, sanitizeVoice } from "@/lib/aiStyle";
 import { PEOPLE_RULE } from "@/lib/peopleContext";
 
 const RecapSchema = z.object({
@@ -145,8 +145,17 @@ export async function POST() {
             "Same voice as commenting on a single post: a friend who actually " +
             "read this, not a stranger summarizing. Do not hype up the person " +
             "or affirm who they are, react to what actually happened. Read " +
-            "casual/internet slang contextually, not literally." +
+            "casual/internet slang contextually, not literally.\n\n" +
+            "You're given their notebook memory, which is a running summary " +
+            "written by another part of the app, not by them. Treat it as " +
+            "background you already had, never as this month's material: a " +
+            "recap that recites what's in the memory, or walks their " +
+            "reflection answers back to them in order, is a list they could " +
+            "have read themselves. What earns a place is what the month's " +
+            "posts show that the memory doesn't already say." +
             PEOPLE_RULE +
+            BELIEFS_RULE +
+            VALUES_RULE +
             NO_EM_DASHES,
         },
         {
@@ -175,7 +184,7 @@ export async function POST() {
       user_id: user.id,
       period_start: start,
       period_end: end,
-      content: parsed.recap.trim(),
+      content: sanitizeVoice(parsed.recap),
     });
     if (error) throw error;
 

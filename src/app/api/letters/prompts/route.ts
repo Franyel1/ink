@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
-import { NO_EM_DASHES } from "@/lib/aiStyle";
+import { BELIEFS_RULE, NO_EM_DASHES, VALUES_RULE, sanitizeVoice } from "@/lib/aiStyle";
 import {
   PEOPLE_RULE,
   PERSON_CONTEXT_SELECT,
@@ -87,6 +87,8 @@ export async function POST() {
             "never write the letter itself, only angles or questions for them " +
             "to write about in their own words." +
             PEOPLE_RULE +
+            BELIEFS_RULE +
+            VALUES_RULE +
             NO_EM_DASHES,
         },
         { role: "user", content: `About this person:\n${context}` },
@@ -95,7 +97,9 @@ export async function POST() {
     });
 
     const parsed = response.choices[0]?.message?.parsed;
-    return NextResponse.json({ prompts: parsed?.prompts.slice(0, 5) ?? [] });
+    return NextResponse.json({
+      prompts: (parsed?.prompts ?? []).slice(0, 5).map(sanitizeVoice),
+    });
   } catch {
     return NextResponse.json({ prompts: [] });
   }

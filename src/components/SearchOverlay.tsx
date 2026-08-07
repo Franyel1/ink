@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Post, PostType, Tag } from "@/lib/types";
 import { POST_TYPES } from "@/lib/types";
+import { searchByMeaning } from "@/lib/posts";
 import PostCard, { type PostAuthor } from "@/components/PostCard";
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
   onEdit: (post: Post) => void;
   onDelete: (post: Post) => void;
   onTogglePin: (post: Post) => void;
+  onQuote?: (post: Post) => void;
 }
 
 export default function SearchOverlay({
@@ -25,6 +27,7 @@ export default function SearchOverlay({
   onEdit,
   onDelete,
   onTogglePin,
+  onQuote,
 }: Props) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<PostType | null>(null);
@@ -32,11 +35,57 @@ export default function SearchOverlay({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  /**
+   * The last completed meaning search, tagged with the query it was for.
+   * Tagging rather than clearing on every keystroke is what keeps this out of
+   * an effect: a stale result is simply ignored once the query moves on.
+   */
+  const [semantic, setSemantic] = useState<{
+    forQuery: string;
+    map: Map<string, number>;
+  } | null>(null);
+  const [searchingFor, setSearchingFor] = useState<string | null>(null);
+
+  // Debounced, since every keystroke would otherwise be an embedding call.
+  // Versioned so a slow early response can't overwrite a later one.
+  const searchRun = useRef(0);
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) return;
+    const run = ++searchRun.current;
+    const timer = setTimeout(() => {
+      setSearchingFor(q);
+      searchByMeaning(q)
+        .then((matches) => {
+          if (run !== searchRun.current) return;
+          if (matches) {
+            setSemantic({
+              forQuery: q,
+              map: new Map(matches.map((m) => [m.id, m.similarity])),
+            });
+          }
+        })
+        .finally(() => {
+          if (run === searchRun.current) setSearchingFor(null);
+        });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const trimmed = query.trim();
+  const meaning = semantic?.forQuery === trimmed ? semantic.map : null;
+  const searching = searchingFor !== null && searchingFor === trimmed;
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return posts.filter((post) => {
-      if (q && !post.content.toLowerCase().includes(q)) return false;
+    const matched = posts.filter((post) => {
+      // A literal match always counts, so searching an exact phrase you
+      // remember writing never loses to a similarity threshold. Meaning
+      // matches widen that set rather than replacing it.
+      if (q) {
+        const literal = post.content.toLowerCase().includes(q);
+        if (!literal && !meaning?.has(post.id)) return false;
+      }
       if (type && post.post_type !== type) return false;
       if (tagId && !post.post_tags.some((pt) => pt.tag_id === tagId))
         return false;
@@ -48,7 +97,26 @@ export default function SearchOverlay({
       }
       return true;
     });
-  }, [posts, query, type, tagId, from, to]);
+
+    if (!q) return matched;
+    // Literal hits first, then by closeness of meaning, then newest.
+    return [...matched].sort((a, b) => {
+      const aLiteral = a.content.toLowerCase().includes(q) ? 1 : 0;
+      const bLiteral = b.content.toLowerCase().includes(q) ? 1 : 0;
+      if (aLiteral !== bLiteral) return bLiteral - aLiteral;
+      const aScore = meaning?.get(a.id) ?? 0;
+      const bScore = meaning?.get(b.id) ?? 0;
+      if (aScore !== bScore) return bScore - aScore;
+      return b.created_at.localeCompare(a.created_at);
+    });
+  }, [posts, query, type, tagId, from, to, meaning]);
+
+  /** Results found only by meaning, worth saying so the list doesn't look wrong. */
+  const meaningOnly = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || !meaning) return 0;
+    return results.filter((p) => !p.content.toLowerCase().includes(q)).length;
+  }, [results, query, meaning]);
 
   if (!open) return null;
 
@@ -161,9 +229,20 @@ export default function SearchOverlay({
       </div>
 
       <div className="scroll-area flex-1 pb-6">
+        {meaningOnly > 0 && (
+          <p className="px-5 pt-3 text-xs text-faint">
+            {meaningOnly === results.length
+              ? "Nothing matched those words, so these are the closest in meaning."
+              : `Including ${meaningOnly} that don't use those words but are close in meaning.`}
+          </p>
+        )}
         {results.length === 0 ? (
           <p className="mt-16 text-center text-sm text-faint">
-            {query || hasFilter ? "Nothing found in your ink." : "Type to search."}
+            {searching
+              ? "Looking…"
+              : query || hasFilter
+                ? "Nothing found in your ink."
+                : "Type to search."}
           </p>
         ) : (
           results.map((post) => (
@@ -174,6 +253,7 @@ export default function SearchOverlay({
               onEdit={onEdit}
               onDelete={onDelete}
               onTogglePin={onTogglePin}
+              onQuote={onQuote}
             />
           ))
         )}

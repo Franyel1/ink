@@ -10,6 +10,7 @@ import { isOffline, queueDraft } from "@/lib/offline";
 import { useKeyboardInset } from "@/lib/useKeyboardInset";
 import { useSpeechToText } from "@/lib/useSpeechToText";
 import Avatar from "@/components/Avatar";
+import QuotedPostCard from "@/components/QuotedPostCard";
 
 interface Author {
   name: string | null;
@@ -18,6 +19,12 @@ interface Author {
 
 interface Props {
   editing: Post | null;
+  /**
+   * The post being quoted, when writing a new one. Quoting is fixed at the
+   * moment of writing: editing a post later can change its words but not what
+   * it was written in response to.
+   */
+  quoting?: Post | null;
   tags: Tag[];
   author: Author;
   onClose: () => void;
@@ -37,6 +44,7 @@ type Picker = "none" | "type" | "tags";
 // initializes straight from props.
 export default function Composer({
   editing,
+  quoting = null,
   tags,
   author,
   onClose,
@@ -114,6 +122,7 @@ export default function Composer({
       postType,
       tagIds,
       newFiles: files.map((f) => f.file),
+      quotedPostId: editing ? null : quoting?.id ?? null,
     };
     try {
       const post = editing
@@ -144,7 +153,10 @@ export default function Composer({
 
   if (typeof document === "undefined") return null;
 
-  const canPost = content.trim().length > 0 || files.length > 0;
+  // A quote with no words of your own is just a repost, and this app has no
+  // audience to repost to. Photos still stand alone.
+  const canPost =
+    content.trim().length > 0 || (files.length > 0 && !quoting);
   const selectedTags = tags.filter((t) => tagIds.includes(t.id));
 
   return createPortal(
@@ -183,10 +195,25 @@ export default function Composer({
               onFocus={() =>
                 textareaRef.current?.scrollIntoView({ block: "nearest" })
               }
-              placeholder="What's on your mind?"
-              rows={4}
+              placeholder={quoting ? "Add something to this…" : "What's on your mind?"}
+              rows={quoting ? 3 : 4}
               className="ink-input w-full resize-none text-[17px] leading-relaxed"
             />
+
+            {quoting && (
+              <div className="mt-2">
+                <QuotedPostCard
+                  post={{
+                    id: quoting.id,
+                    content: quoting.content,
+                    post_type: quoting.post_type,
+                    created_at: quoting.created_at,
+                    post_images: quoting.post_images,
+                  }}
+                  compact
+                />
+              </div>
+            )}
 
             {files.length > 0 && (
               <div

@@ -32,6 +32,50 @@ export async function fetchPerson(id: string): Promise<Person | null> {
   return (data as Person | null) ?? null;
 }
 
+export interface PersonEdits {
+  name: string;
+  relationship: string | null;
+  notes: string | null;
+}
+
+/**
+ * Corrects a person's record by hand.
+ *
+ * Everything here was written by the model reading posts, which means it gets
+ * names wrong: someone shows up as "sister" or "coworker intern" until a post
+ * happens to name them, and nothing after that renames the entry. Analysis
+ * matches on name, so renaming also decides which future mentions land here.
+ */
+export async function updatePerson(
+  id: string,
+  edits: PersonEdits
+): Promise<Person> {
+  const supabase = createClient();
+  const name = edits.name.trim();
+  if (!name) throw new Error("A name is required");
+
+  const { data, error } = await supabase
+    .from("people")
+    .update({
+      name,
+      relationship: edits.relationship?.trim() || null,
+      notes: edits.notes?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  // The (user_id, name) unique constraint is what stops a rename from
+  // silently creating a duplicate of someone already on record.
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("Someone with that name is already in your notebook");
+    }
+    throw error;
+  }
+  return data as Person;
+}
+
 export interface PersonPost {
   id: string;
   content: string;

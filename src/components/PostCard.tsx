@@ -7,6 +7,7 @@ import type { Post } from "@/lib/types";
 import { formatPostTime } from "@/lib/dates";
 import Avatar from "@/components/Avatar";
 import { AISparkleButton, AICommentPopup } from "@/components/AIComment";
+import QuotedPostCard, { MissingQuoteCard } from "@/components/QuotedPostCard";
 
 export interface PostAuthor {
   name: string | null;
@@ -19,6 +20,8 @@ interface Props {
   onEdit: (post: Post) => void;
   onDelete: (post: Post) => void;
   onTogglePin: (post: Post) => void;
+  /** Omitted where quoting makes no sense, which hides the menu action. */
+  onQuote?: (post: Post) => void;
 }
 
 export default function PostCard({
@@ -27,6 +30,7 @@ export default function PostCard({
   onEdit,
   onDelete,
   onTogglePin,
+  onQuote,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -85,6 +89,18 @@ export default function PostCard({
             >
               {post.is_pinned ? "Unpin" : "Pin"}
             </button>
+            {onQuote && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onQuote(post);
+                }}
+                className="block w-full px-4 py-3 text-left text-sm"
+              >
+                Quote
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -136,6 +152,21 @@ export default function PostCard({
     </div>
   );
 
+  // A quote whose subject was deleted keeps the empty frame rather than
+  // silently becoming an ordinary post, so the reply still has something to
+  // be replying to.
+  const quoteRow = (post.quoted_post || post.quoted_post_id) && (
+    <div className="mt-2.5">
+      {post.quoted_post ? (
+        <Link href={`/post/${post.quoted_post.id}`} className="pressable block">
+          <QuotedPostCard post={post.quoted_post} compact />
+        </Link>
+      ) : (
+        <MissingQuoteCard />
+      )}
+    </div>
+  );
+
   const tagRow = tags.length > 0 && (
     <div className="mt-2 flex flex-wrap gap-1.5">
       {tags.map((tag) => (
@@ -176,6 +207,7 @@ export default function PostCard({
           >
             {post.content}
           </p>
+          {quoteRow}
           {peopleRow}
           {tagRow}
         </div>
@@ -237,6 +269,7 @@ export default function PostCard({
         </p>
       )}
       <div className="px-4">
+        {quoteRow}
         {peopleRow}
         {tagRow}
       </div>

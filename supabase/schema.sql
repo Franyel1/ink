@@ -1,6 +1,8 @@
 -- Ink. — Supabase schema
 -- Run this in the Supabase SQL editor (Dashboard → SQL Editor → New query).
 
+create extension if not exists vector;
+
 -- ========== Tables ==========
 
 create table if not exists public.profiles (
@@ -14,6 +16,9 @@ create table if not exists public.profiles (
   handling_bad text,
   improvement_goal text,
   notebook_memory text,
+  -- Lines the user removed from notebook_memory, so the rewrite that happens
+  -- on every reflect generation doesn't put them straight back.
+  notebook_forgotten jsonb not null default '[]'::jsonb,
   onboarded boolean default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
@@ -25,7 +30,6 @@ create table if not exists public.posts (
   content text not null,
   post_type text default 'thought',
   is_pinned boolean default false,
-  is_favorited boolean default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   ai_processed boolean default false,
@@ -33,7 +37,11 @@ create table if not exists public.posts (
   ai_comment text,
   ai_sentiment text,
   ai_topics jsonb,
-  ai_embedding_status text default 'not_processed'
+  ai_embedding_status text default 'not_processed',
+  ai_embedding vector(1536),
+  -- An older post carried inside this one. `set null` so deleting the quoted
+  -- post never deletes what you wrote about it.
+  quoted_post_id uuid references public.posts(id) on delete set null
 );
 
 create table if not exists public.post_images (
@@ -179,6 +187,37 @@ create table if not exists public.daily_lines (
 
 create index if not exists posts_user_created_idx
   on public.posts (user_id, created_at desc);
+
+create index if not exists posts_quoted_post_idx
+  on public.posts (quoted_post_id)
+  where quoted_post_id is not null;
+
+create index if not exists posts_ai_embedding_idx
+  on public.posts using hnsw (ai_embedding vector_cosine_ops);
+
+create index if not exists posts_embedding_status_idx
+  on public.posts (user_id, ai_embedding_status)
+  where ai_embedding_status <> 'processed';
+
+-- Semantic search over the caller's own posts. SECURITY INVOKER (the default)
+-- is deliberate: posts RLS applies inside the function, so a user can only
+-- ever match against their own writing.
+create or replace function public.match_posts(
+  query_embedding vector(1536),
+  match_count int default 20,
+  min_similarity float default 0.15
+)
+returns table (id uuid, similarity float)
+language sql
+stable
+as $$
+  select p.id, 1 - (p.ai_embedding <=> query_embedding) as similarity
+  from public.posts p
+  where p.ai_embedding is not null
+    and 1 - (p.ai_embedding <=> query_embedding) >= min_similarity
+  order by p.ai_embedding <=> query_embedding
+  limit match_count;
+$$;
 
 -- ========== Row Level Security ==========
 

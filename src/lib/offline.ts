@@ -20,6 +20,11 @@ export interface QueuedDraft {
   tagIds: string[];
   files: File[];
   createdAt: string;
+  /**
+   * Carried so a quote written with no signal still posts as a quote. Drafts
+   * saved before quoting existed simply don't have it.
+   */
+  quotedPostId?: string | null;
 }
 
 interface CachedFeed {
@@ -48,6 +53,7 @@ export async function queueDraft(input: PostInput): Promise<QueuedDraft> {
     // Files are structured-cloneable, so the images ride along in IndexedDB.
     files: input.newFiles,
     createdAt: new Date().toISOString(),
+    quotedPostId: input.quotedPostId ?? null,
   };
   await idbPut(DRAFTS, draft);
   return draft;
@@ -95,6 +101,7 @@ export async function flushDrafts(): Promise<Post[]> {
           postType: draft.postType,
           tagIds: draft.tagIds,
           newFiles: draft.files,
+          quotedPostId: draft.quotedPostId ?? null,
         });
         await discardDraft(draft.id);
         posted.push(post);

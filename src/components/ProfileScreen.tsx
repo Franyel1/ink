@@ -6,9 +6,13 @@ import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import { createClient } from "@/lib/supabase/client";
 import type { Post, Profile } from "@/lib/types";
-import { POST_SELECT, setPinned } from "@/lib/posts";
+import { POST_SELECT, normalizePost, setPinned } from "@/lib/posts";
 import { formatPostTime } from "@/lib/dates";
 import { clearOfflineData, readDrafts } from "@/lib/offline";
+import { splitMemory } from "@/lib/memory";
+
+/** How many gathered lines the profile shows before sending you to the page. */
+const MEMORY_PREVIEW = 3;
 
 type EditableField =
   | "display_name"
@@ -109,7 +113,7 @@ export default function ProfileScreen() {
               .limit(60),
           ]);
         if (prof) setProfile(prof as Profile);
-        setPinnedPosts((pinned ?? []) as Post[]);
+        setPinnedPosts((pinned ?? []).map(normalizePost));
         setTrends(computeTrends(recent ?? []));
       })
       .catch(() => setLoadError(true));
@@ -155,27 +159,6 @@ export default function ProfileScreen() {
       setEditingField(null);
       router.refresh();
     }
-    setBusy(false);
-  }
-
-  /**
-   * Clear the model's running note. It rebuilds from your posts and answers the
-   * next time questions are generated — this erases what it currently thinks,
-   * not its ability to think anything.
-   */
-  async function forgetNotebookMemory() {
-    if (!profile || busy) return;
-    const ok = window.confirm(
-      "Erase what the notebook has gathered about you? It starts over from your posts the next time it writes questions."
-    );
-    if (!ok) return;
-    setBusy(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("profiles")
-      .update({ notebook_memory: null, updated_at: new Date().toISOString() })
-      .eq("id", profile.id);
-    if (!error) setProfile({ ...profile, notebook_memory: null });
     setBusy(false);
   }
 
@@ -247,6 +230,8 @@ export default function ProfileScreen() {
       </div>
     );
   }
+
+  const memoryLines = splitMemory(profile.notebook_memory);
 
   return (
     <div className="scroll-area flex-1 pb-10">
@@ -376,30 +361,41 @@ export default function ProfileScreen() {
           {/* The note the model keeps about you. Onboarding promises this is
               readable and erasable — it can't be a black box. */}
           <div className="mt-6 rounded-2xl border border-border/60 p-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-xs uppercase tracking-widest text-faint">
-                What the notebook has gathered
-              </p>
-              {profile.notebook_memory && (
-                <button
-                  type="button"
-                  onClick={forgetNotebookMemory}
-                  disabled={busy}
-                  className="pressable shrink-0 text-[11px] text-faint underline disabled:opacity-40"
-                >
-                  Forget it
-                </button>
-              )}
-            </div>
-            <p
-              data-selectable
-              className={`mt-2 whitespace-pre-wrap leading-relaxed ${
-                profile.notebook_memory ? "text-sm text-muted" : "text-sm text-faint"
-              }`}
-            >
-              {profile.notebook_memory ||
-                "Nothing yet. It fills in as you write and answer."}
+            <p className="text-xs uppercase tracking-widest text-faint">
+              What the notebook has gathered
             </p>
+            {memoryLines.length === 0 ? (
+              <p className="mt-2 text-sm leading-relaxed text-faint">
+                Nothing yet. It fills in as you write and answer.
+              </p>
+            ) : (
+              <>
+                {/* A preview, not the whole note: this sits above sign-out on a
+                    page nobody wants to scroll past a wall of text to reach. */}
+                {memoryLines.slice(0, MEMORY_PREVIEW).map((line) => (
+                  <p
+                    key={line}
+                    data-selectable
+                    className="mt-2 rounded-xl bg-surface px-3 py-2 text-sm leading-relaxed text-muted"
+                  >
+                    {line}
+                  </p>
+                ))}
+                <Link
+                  href="/memory"
+                  className="pressable mt-3 flex items-center justify-between text-[11px] text-faint"
+                >
+                  <span>
+                    {memoryLines.length > MEMORY_PREVIEW
+                      ? `See all ${memoryLines.length}, and remove any of it`
+                      : "Remove any of it"}
+                  </span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+                  </svg>
+                </Link>
+              </>
+            )}
           </div>
 
           <Link

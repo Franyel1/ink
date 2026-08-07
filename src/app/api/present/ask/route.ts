@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
-import { NO_EM_DASHES } from "@/lib/aiStyle";
+import { BELIEFS_RULE, NO_EM_DASHES, VALUES_RULE, sanitizeVoice } from "@/lib/aiStyle";
 
 const AskSchema = z.object({
   question: z
@@ -48,7 +48,11 @@ export async function POST(request: Request) {
           content:
             "You write one reflective question, on demand, about a topic the " +
             "person just asked to think about. Calm, warm, curious, never " +
-            "clinical or therapy-speak." + NO_EM_DASHES,
+            "clinical or therapy-speak. They chose this topic, so the question " +
+            "opens it up rather than questioning why they picked it." +
+            BELIEFS_RULE +
+            VALUES_RULE +
+            NO_EM_DASHES,
         },
         {
           role: "user",
@@ -64,7 +68,7 @@ export async function POST(request: Request) {
     if (!parsed) {
       return NextResponse.json({ error: "no output" }, { status: 502 });
     }
-    return NextResponse.json({ question: parsed.question.trim() });
+    return NextResponse.json({ question: sanitizeVoice(parsed.question) });
   } catch {
     return NextResponse.json({ error: "generation failed" }, { status: 500 });
   }

@@ -27,6 +27,7 @@ export default function FeedScreen() {
   });
   const [composerOpen, setComposerOpen] = useState(false);
   const [editing, setEditing] = useState<Post | null>(null);
+  const [quoting, setQuoting] = useState<Post | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [stale, setStale] = useState(false);
@@ -98,7 +99,14 @@ export default function FeedScreen() {
   }, [loadFeed]);
 
   const handleEdit = useCallback((post: Post) => {
+    setQuoting(null);
     setEditing(post);
+    setComposerOpen(true);
+  }, []);
+
+  const handleQuote = useCallback((post: Post) => {
+    setEditing(null);
+    setQuoting(post);
     setComposerOpen(true);
   }, []);
 
@@ -135,6 +143,7 @@ export default function FeedScreen() {
     );
     setComposerOpen(false);
     setEditing(null);
+    setQuoting(null);
   }
 
   return (
@@ -251,6 +260,7 @@ export default function FeedScreen() {
               onEdit={handleEdit}
               onDelete={handleDelete}
               onTogglePin={handleTogglePin}
+              onQuote={handleQuote}
             />
           ))}
         </div>
@@ -284,23 +294,30 @@ export default function FeedScreen() {
         onEdit={handleEdit}
         onDelete={handleDelete}
         onTogglePin={handleTogglePin}
+        onQuote={(post) => {
+          setSearchOpen(false);
+          handleQuote(post);
+        }}
       />
 
       {composerOpen && (
         <Composer
-          key={editing?.id ?? "new"}
+          key={editing?.id ?? (quoting ? `quote-${quoting.id}` : "new")}
           editing={editing}
+          quoting={quoting}
           tags={tags}
           author={author}
           onClose={() => {
             setComposerOpen(false);
             setEditing(null);
+            setQuoting(null);
           }}
           onSaved={handleSaved}
           onQueued={async () => {
             setDrafts(await readDrafts());
             setComposerOpen(false);
             setEditing(null);
+            setQuoting(null);
           }}
           onTagCreated={(tag) =>
             setTags((all) =>

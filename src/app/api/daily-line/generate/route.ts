@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
-import { NO_EM_DASHES } from "@/lib/aiStyle";
+import { NO_EM_DASHES, sanitizeVoice } from "@/lib/aiStyle";
 
 const LineSchema = z.object({
   line: z
@@ -75,7 +75,15 @@ export async function POST() {
             "You read someone's posts from today and write one short line " +
             "capturing the day's shape, like a weather report for how the day " +
             "reads, not what happened in it. Plain, human, never clinical, " +
-            "never a compliment, never advice." + NO_EM_DASHES,
+            "never a compliment, never advice.\n\n" +
+            "Write a sentence, not a log entry. 'Mixed play and code with " +
+            "small surprises spotted' is a list of the day's contents with the " +
+            "subject removed, which is the failure to avoid. Closer to the " +
+            "mark: 'A day that kept getting interrupted by better ideas.' " +
+            "'Quiet, and busier than it looked.' 'Everything took one more " +
+            "step than it should have.' Start with a capital, end with a full " +
+            "stop, and let it read like something a person would say out " +
+            "loud." + NO_EM_DASHES,
         },
         { role: "user", content: `Today's posts:\n${postLines}` },
       ],
@@ -87,7 +95,7 @@ export async function POST() {
       return NextResponse.json({ line: null });
     }
 
-    const line = parsed.line.trim();
+    const line = sanitizeVoice(parsed.line);
     const { error } = await supabase
       .from("daily_lines")
       .insert({ user_id: user.id, day: dayIso, line });

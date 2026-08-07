@@ -42,6 +42,8 @@ export interface Profile {
   improvement_goal: string | null;
   /** The running note the model keeps about you, rewritten as it learns more. */
   notebook_memory: string | null;
+  /** Lines removed from `notebook_memory` by hand, never to be written back. */
+  notebook_forgotten?: string[];
   onboarded: boolean;
   created_at: string;
   updated_at: string;
@@ -61,14 +63,29 @@ export interface Tag {
   created_at: string;
 }
 
+/**
+ * The shallow copy of an older post shown inside the one quoting it. Only one
+ * level deep on purpose: quoting a quote shows the post you pointed at, not
+ * the whole chain behind it.
+ */
+export interface QuotedPost {
+  id: string;
+  content: string;
+  post_type: PostType;
+  created_at: string;
+  post_images: { image_url: string }[];
+}
+
 export interface Post {
   id: string;
   user_id: string;
   content: string;
   post_type: PostType;
   is_pinned: boolean;
-  is_favorited: boolean;
   created_at: string;
+  /** Null once the quoted post is deleted; the quote itself survives. */
+  quoted_post_id?: string | null;
+  quoted_post?: QuotedPost | null;
   updated_at: string;
   post_images: PostImage[];
   post_tags: { tag_id: string; tags: Tag }[];

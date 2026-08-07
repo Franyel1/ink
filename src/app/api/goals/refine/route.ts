@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
-import { NO_EM_DASHES } from "@/lib/aiStyle";
+import { NO_EM_DASHES, VALUES_RULE, sanitizeVoice } from "@/lib/aiStyle";
 
 const RefineSchema = z.object({
   refined: z
@@ -53,7 +53,9 @@ export async function POST(request: Request) {
           content:
             "You lightly tighten a goal someone wrote for themselves. You do " +
             "not choose their goals, add ambition they didn't express, or " +
-            "invent a plan, you only clarify their own wording." + NO_EM_DASHES,
+            "invent a plan, you only clarify their own wording." +
+            VALUES_RULE +
+            NO_EM_DASHES,
         },
         { role: "user", content: `Their goal, as written: ${goal.raw_text}` },
       ],
@@ -67,11 +69,11 @@ export async function POST(request: Request) {
 
     const { error } = await supabase
       .from("goals")
-      .update({ refined_text: parsed.refined.trim(), updated_at: new Date().toISOString() })
+      .update({ refined_text: sanitizeVoice(parsed.refined), updated_at: new Date().toISOString() })
       .eq("id", goal.id);
     if (error) throw error;
 
-    return NextResponse.json({ refined: parsed.refined.trim() });
+    return NextResponse.json({ refined: sanitizeVoice(parsed.refined) });
   } catch {
     return NextResponse.json({ skipped: "refine failed" });
   }

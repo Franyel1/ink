@@ -4,7 +4,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
-import { BELIEFS_RULE, NO_EM_DASHES } from "@/lib/aiStyle";
+import { BELIEFS_RULE, NO_EM_DASHES, VALUES_RULE, sanitizeVoice } from "@/lib/aiStyle";
 import { formatPeopleLines } from "@/lib/peopleContext";
 
 /** Keep the vision call cheap: shrink and re-encode before sending. */
@@ -75,10 +75,20 @@ const AnalysisSchema = z.object({
     ),
   notice: z
     .string()
+    .nullable()
     .describe(
-      "A short, quiet side note (under ~12 words) naming a pattern this connects " +
-        "to in their background or recent posts, only if there's a real, " +
-        "non-obvious link, otherwise leave it empty."
+      "Almost always null. Only a specific, non-obvious connection between " +
+        "this post and something in their life earns a value here: a thread " +
+        "picking back up, a reversal of something they said before, a worry " +
+        "resurfacing, the same situation landing differently than last time.\n" +
+        "It is not a description of how they write. 'Direct and literal', " +
+        "'mixes humor with detail', 'typical style', 'fits their usual voice' " +
+        "and anything else about their prose is never a notice, it says " +
+        "nothing they don't know and crowds out the real ones. Neither is a " +
+        "restatement of the post, or a link so obvious it isn't worth saying " +
+        "(a gaming post connecting to other gaming posts).\n" +
+        "If you're weighing whether it clears that bar, it doesn't. Return " +
+        "null. Under ~12 words when there genuinely is one."
     ),
   sentiment: z
     .enum(["positive", "negative", "mixed", "neutral"])
@@ -106,10 +116,24 @@ const AnalysisSchema = z.object({
         note: z
           .string()
           .describe(
-            "The full, rewritten set of notes about this person: fold in what's " +
-              "already known about them (given below) with anything new from this " +
-              "post. Plain sentences, under ~60 words, third person, no headers. " +
-              "Don't invent detail that isn't supported."
+            "The full, rewritten note about this person: fold what's already " +
+              "known about them (given below) together with anything new from " +
+              "this post. Under ~60 words, plain sentences, no headers.\n" +
+              "Write it the way someone would jot a note to remember a person " +
+              "they know, not the way a file describes a subject. These are " +
+              "the writer's people, and the note gets read back to them. " +
+              "'Jaedyn plays Minecraft with him most nights, gets deep into " +
+              "mods, waves it off when family stuff makes him late' reads " +
+              "right. 'Significant other and gaming partner; relationship " +
+              "includes balancing gaming commitments with personal " +
+              "challenges' does not: that's a case file, and nobody thinks " +
+              "about someone they love in those words.\n" +
+              "Only what the posts actually support. If you catch yourself " +
+              "writing 'likely', 'seems to', 'presumably', or 'apparently', " +
+              "you're guessing, so leave the guess out. Never narrate your " +
+              "own record-keeping ('as noted repeatedly', 'mentioned again'), " +
+              "and don't pad a thin note to fill space: two honest lines beat " +
+              "sixty words of inference."
           ),
       })
     )
@@ -142,7 +166,10 @@ export async function POST(request: Request) {
     await Promise.all([
       supabase
         .from("posts")
-        .select("id, content, post_type, ai_processed, post_images(image_url)")
+        // One literal, not a concatenation: see the note on POST_SELECT.
+        .select(
+          "id, content, post_type, ai_processed, quoted_post_id, post_images(image_url), quoted_post:quoted_post_id(content, post_type, created_at)"
+        )
         .eq("id", postId)
         .maybeSingle(),
       supabase
@@ -195,6 +222,29 @@ export async function POST(request: Request) {
 
   const peopleLines = formatPeopleLines(people ?? []);
 
+  // A quote is a reply to the user's own earlier self, so the model needs both
+  // halves: reacting to the new words without the old ones reads as if it
+  // wasn't listening.
+  //
+  // PostgREST returns a single object for this many-to-one embed, but without
+  // generated database types supabase-js widens it to an array, so accept
+  // either rather than betting on one.
+  const rawQuoted = (post as { quoted_post?: unknown }).quoted_post;
+  const quoted = (Array.isArray(rawQuoted) ? rawQuoted[0] : rawQuoted) as
+    | { content: string; post_type: string; created_at: string }
+    | null
+    | undefined;
+  const quotedBlock = quoted
+    ? `\n\nThis post is quoting something they wrote earlier, on ${String(
+        quoted.created_at
+      ).slice(0, 10)} (type: ${quoted.post_type}):\n"""\n${quoted.content.slice(
+        0,
+        1200
+      )}\n"""\n`
+    : post.quoted_post_id
+      ? "\n\nThis post quotes an earlier post that has since been deleted.\n"
+      : "";
+
   const compressedImages = (
     await Promise.all(
       images.slice(0, MAX_IMAGES_PER_POST).map((img) => compressImage(img.image_url))
@@ -245,7 +295,18 @@ export async function POST(request: Request) {
             "photos. Reuse a person's existing entry (matching by name) and " +
             "rewrite their notes to fold in anything new, rather than starting " +
             "over. Don't list someone who isn't a real, specific person actually " +
-            "mentioned or clearly identifiable." + BELIEFS_RULE + NO_EM_DASHES,
+            "mentioned or clearly identifiable.\n\n" +
+            "A post can quote an older post of theirs, which makes it a reply to " +
+            "their own earlier self. When one does, react to the relationship " +
+            "between the two: what changed, what didn't, whether the earlier " +
+            "read holds up. Don't summarise the old post back at them, they " +
+            "wrote it. The new words are still what you're commenting on, the " +
+            "old ones are the context that gives them their point. People " +
+            "mentioned only in the quoted post don't count as mentioned again " +
+            "here unless the new writing actually brings them up." +
+            BELIEFS_RULE +
+            VALUES_RULE +
+            NO_EM_DASHES,
         },
         {
           role: "user",
@@ -260,7 +321,8 @@ export async function POST(request: Request) {
                 `People already on record:\n${peopleLines || "(none yet)"}\n\n` +
                 `Analyze this new journal post (type: ${post.post_type})${
                   compressedImages.length > 0 ? ", including the attached photo(s)" : ""
-                }:\n\n${post.content || "(no text, just the photo(s))"}`,
+                }:\n\n${post.content || "(no text, just the photo(s))"}` +
+                quotedBlock,
             },
             ...compressedImages.map((url) => ({
               type: "image_url" as const,
@@ -281,8 +343,8 @@ export async function POST(request: Request) {
       .from("posts")
       .update({
         ai_processed: true,
-        ai_comment: analysis.comment,
-        ai_summary: analysis.notice.trim() || null,
+        ai_comment: sanitizeVoice(analysis.comment),
+        ai_summary: analysis.notice ? sanitizeVoice(analysis.notice) || null : null,
         ai_sentiment: analysis.sentiment,
         ai_topics: analysis.topics,
         ai_embedding_status: "not_processed",
@@ -305,7 +367,7 @@ export async function POST(request: Request) {
             user_id: user.id,
             name,
             relationship: mention.relationship.trim() || existing?.relationship || null,
-            notes: mention.note.trim() || null,
+            notes: sanitizeVoice(mention.note) || null,
             mention_count: (existing?.mention_count ?? 0) + 1,
             last_mentioned_at: new Date().toISOString(),
           },

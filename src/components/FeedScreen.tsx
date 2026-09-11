@@ -18,6 +18,8 @@ import Composer from "@/components/Composer";
 import SearchOverlay from "@/components/SearchOverlay";
 import OnThisDay from "@/components/OnThisDay";
 
+const FEED_PAGE_SIZE = 12;
+
 export default function FeedScreen() {
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -31,8 +33,13 @@ export default function FeedScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [stale, setStale] = useState(false);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [drafts, setDrafts] = useState<QueuedDraft[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
+  const cachedRemainingRef = useRef<Post[]>([]);
 
   const loadFeed = useCallback(async () => {
     const supabase = createClient();
@@ -47,8 +54,14 @@ export default function FeedScreen() {
     });
     setDrafts(await readDrafts());
     try {
-      const [p, t, prof] = await Promise.all([fetchPosts(), fetchTags(), loadAuthor]);
+      const [p, t, prof] = await Promise.all([
+        fetchPosts(FEED_PAGE_SIZE),
+        fetchTags(),
+        loadAuthor,
+      ]);
       setPosts(p);
+      setHasMorePosts(p.length === FEED_PAGE_SIZE);
+      cachedRemainingRef.current = [];
       setTags(t);
       if (prof) setAuthor({ name: prof.display_name, avatarUrl: prof.profile_picture_url });
       setLoadError(false);
@@ -59,7 +72,9 @@ export default function FeedScreen() {
       // genuinely empty cache counts as an error worth showing.
       const cached = await readCachedFeed();
       if (cached) {
-        setPosts(cached.posts);
+        setPosts(cached.posts.slice(0, FEED_PAGE_SIZE));
+        cachedRemainingRef.current = cached.posts.slice(FEED_PAGE_SIZE);
+        setHasMorePosts(cached.posts.length > FEED_PAGE_SIZE);
         setTags(cached.tags);
         setStale(true);
         setLoadError(false);
@@ -68,6 +83,51 @@ export default function FeedScreen() {
       }
     }
   }, []);
+
+  const loadMorePosts = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMorePosts || !posts?.length) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const cachedPosts = cachedRemainingRef.current;
+      const more = cachedPosts.length > 0
+        ? cachedPosts.splice(0, FEED_PAGE_SIZE)
+        : await fetchPosts(
+            FEED_PAGE_SIZE,
+            posts[posts.length - 1]?.created_at
+          );
+      setPosts((all) => {
+        if (!all) return more;
+        const ids = new Set(all.map((post) => post.id));
+        return [...all, ...more.filter((post) => !ids.has(post.id))];
+      });
+      setHasMorePosts(
+        cachedRemainingRef.current.length > 0 || more.length === FEED_PAGE_SIZE
+      );
+      if (cachedRemainingRef.current.length === 0 && more.length > 0) {
+        void cacheFeed([...posts, ...more], tags);
+      }
+    } catch {
+      // Keep the currently visible posts if loading the next page fails.
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [hasMorePosts, posts, tags]);
+
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    const scrollContainer = scrollRef.current;
+    if (!sentinel || !scrollContainer) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) void loadMorePosts();
+      },
+      { root: scrollContainer, rootMargin: "0px 0px 320px" }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMorePosts]);
 
   useEffect(() => {
     // Mount fetch: every setState inside loadFeed happens after an await, so
@@ -263,6 +323,13 @@ export default function FeedScreen() {
               onQuote={handleQuote}
             />
           ))}
+          {posts !== null && posts.length > 0 && (hasMorePosts || loadingMore) && (
+            <div ref={loadMoreRef} className="flex h-20 items-center justify-center">
+              <span className={`text-sm text-faint ${loadingMore ? "animate-pulse" : ""}`}>
+                {loadingMore ? "Loading more…" : ""}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

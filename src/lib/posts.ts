@@ -33,12 +33,17 @@ export function normalizePost(row: unknown): Post {
   return { ...r, quoted_post: quoted } as unknown as Post;
 }
 
-export async function fetchPosts(): Promise<Post[]> {
+export async function fetchPosts(
+  limit = 12,
+  before?: string
+): Promise<Post[]> {
   const supabase = createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("posts")
     .select(POST_SELECT)
     .order("created_at", { ascending: false });
+  if (before) query = query.lt("created_at", before);
+  const { data, error } = await query.limit(limit);
   if (error) throw error;
   return (data ?? []).map(normalizePost);
 }

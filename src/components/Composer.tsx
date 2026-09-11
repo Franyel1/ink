@@ -310,6 +310,25 @@ export default function Composer({
       )}
       {picker === "tags" && (
         <div className="fade-in scroll-x flex shrink-0 items-center gap-2 border-t border-border/50 px-4 py-3">
+          <span className="write-line inline-flex shrink-0 items-center gap-1 pb-0.5">
+            <input
+              value={newTag}
+              onChange={(e) => setNewTag(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addTag();
+                }
+              }}
+              placeholder="New tag…"
+              className="ink-input w-24 text-sm"
+            />
+            {newTag.trim() && (
+              <button type="button" onClick={addTag} className="text-sm text-muted">
+                Add
+              </button>
+            )}
+          </span>
           {tags.map((tag) => {
             const on = tagIds.includes(tag.id);
             return (
@@ -331,25 +350,6 @@ export default function Composer({
               </button>
             );
           })}
-          <span className="write-line inline-flex shrink-0 items-center gap-1 pb-0.5">
-            <input
-              value={newTag}
-              onChange={(e) => setNewTag(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addTag();
-                }
-              }}
-              placeholder="New tag…"
-              className="ink-input w-24 text-sm"
-            />
-            {newTag.trim() && (
-              <button type="button" onClick={addTag} className="text-sm text-muted">
-                Add
-              </button>
-            )}
-          </span>
         </div>
       )}
 

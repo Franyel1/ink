@@ -39,6 +39,28 @@ const TABS = [
       />
     ),
   },
+  {
+    href: "/people",
+    label: "People",
+    desktopOnly: true,
+    icon: (
+      <>
+        <circle cx="9" cy="8" r="3" />
+        <path strokeLinecap="round" d="M3.5 20a5.5 5.5 0 0111 0M15 6.5a3 3 0 010 5.8M17 15a5 5 0 013.5 5" />
+      </>
+    ),
+  },
+  {
+    href: "/memory",
+    label: "Gathered",
+    desktopOnly: true,
+    icon: (
+      <>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 4.5h11a3 3 0 013 3V20H8a3 3 0 01-3-3V4.5z" />
+        <path strokeLinecap="round" d="M8 8h7M8 12h7M8 16h4" />
+      </>
+    ),
+  },
 ];
 
 export default function TabBar() {
@@ -58,15 +80,25 @@ export default function TabBar() {
   }, [pathname]);
 
   return (
-    <nav className="shrink-0 border-t border-border bg-background pb-[var(--safe-bottom)] mb-[-5px]">
-      <div className="mx-auto flex max-w-lg items-stretch justify-around">
+    <nav className="order-last z-40 mb-[-5px] shrink-0 border-t border-border bg-background pb-[var(--safe-bottom)] md:order-first md:mb-0 md:flex md:h-full md:w-60 md:flex-col md:border-r md:border-t-0 md:p-5">
+      <Link
+        href="/feed"
+        className="mb-10 hidden items-baseline gap-2 px-3 md:flex"
+        aria-label="Ink home"
+      >
+        <span className="font-script text-5xl leading-none">Ink.</span>
+        <span className="text-[10px] uppercase tracking-[0.22em] text-faint">private</span>
+      </Link>
+      <div className="mx-auto flex max-w-lg items-stretch justify-around md:mx-0 md:max-w-none md:flex-1 md:flex-col md:justify-start md:gap-1">
         {TABS.map((tab) => {
           const active = pathname.startsWith(tab.href);
           return (
             <Link
               key={tab.href}
               href={tab.href}
-              className={`pressable flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-0.5 transition-colors ${
+              className={`pressable group flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-0.5 transition-colors md:flex-none md:flex-row md:gap-3 md:rounded-2xl md:px-3 md:py-3 ${
+                tab.desktopOnly ? "hidden md:flex" : ""
+              } ${
                 active ? "text-foreground" : "text-faint"
               }`}
             >
@@ -76,7 +108,7 @@ export default function TabBar() {
                   fill="none"
                   stroke="currentColor"
                   strokeWidth={active ? 2 : 1.5}
-                  className="h-[22px] w-[22px]"
+                  className="h-[22px] w-[22px] md:h-5 md:w-5"
                 >
                   {tab.icon}
                 </svg>
@@ -90,13 +122,19 @@ export default function TabBar() {
                   />
                 )}
               </span>
-              <span className="text-[9px] font-medium tracking-wide">
+              <span className="text-[9px] font-medium tracking-wide md:text-sm md:tracking-normal">
                 {tab.label}
               </span>
+              {active && (
+                <span className="ml-auto hidden h-1.5 w-1.5 rounded-full bg-foreground md:block" />
+              )}
             </Link>
           );
         })}
       </div>
+      <p className="hidden px-3 text-xs leading-relaxed text-faint md:block">
+        Your life, kept quietly in ink.
+      </p>
     </nav>
   );
 }

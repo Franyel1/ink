@@ -261,3 +261,84 @@ input,
   opacity: 0.05;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+
+/* ---- Desktop workspace -------------------------------------------------
+   The phone app remains a tight, edge-to-edge object. On larger screens it
+   becomes a calm notebook workspace with persistent navigation and a bounded
+   reading surface, so lines never grow too long to read comfortably. */
+@media (min-width: 768px) {
+  :root {
+    --safe-top: 0px;
+    --safe-bottom: 0px;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at 72% 12%, rgba(255, 255, 255, 0.035), transparent 30rem),
+      #070707;
+  }
+
+  .desktop-app {
+    max-width: 1600px;
+    margin-inline: auto;
+  }
+
+  .desktop-main {
+    padding: 24px clamp(24px, 5vw, 72px);
+  }
+
+  .desktop-canvas {
+    width: min(100%, 920px);
+    margin-inline: auto;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    background: var(--background);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+  }
+
+  .desktop-canvas header {
+    padding-left: clamp(24px, 3vw, 36px);
+    padding-right: clamp(24px, 3vw, 36px);
+    padding-top: 28px;
+  }
+
+  .desktop-canvas .scroll-area {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .desktop-canvas .scroll-area::-webkit-scrollbar {
+    display: block;
+    width: 8px;
+  }
+
+  .desktop-canvas .scroll-area::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: var(--border);
+    background-clip: padding-box;
+  }
+
+  .desktop-canvas article {
+    border-inline: 1px solid transparent;
+    border-radius: 18px;
+    transition: background-color 160ms ease, border-color 160ms ease;
+  }
+
+  .desktop-canvas article:hover {
+    border-color: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.018);
+  }
+
+  .pressable:hover {
+    opacity: 0.8;
+  }
+
+  .pressable:focus-visible,
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--foreground);
+    outline-offset: 3px;
+  }
+}

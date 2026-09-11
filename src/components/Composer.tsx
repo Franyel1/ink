@@ -161,9 +161,10 @@ export default function Composer({
 
   return createPortal(
     <div
-      className="fade-in fixed inset-0 z-50 flex flex-col bg-background"
+      className="fade-in fixed inset-0 z-50 flex flex-col bg-background md:items-center md:justify-center md:bg-black/75 md:p-8"
       style={{ paddingBottom: keyboardInset || undefined }}
     >
+      <div className="flex h-full min-h-0 w-full flex-col bg-background md:h-[min(760px,calc(100vh-4rem))] md:max-w-2xl md:overflow-hidden md:rounded-[2rem] md:border md:border-border md:shadow-2xl md:shadow-black/60">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-[calc(var(--safe-top)+0.65rem)]">
         <button
@@ -427,6 +428,7 @@ export default function Composer({
         >
           {postType}
         </button>
+      </div>
       </div>
     </div>,
     document.body

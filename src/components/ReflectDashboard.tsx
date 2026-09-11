@@ -166,17 +166,17 @@ export default function ReflectDashboard() {
               "repeating-linear-gradient(90deg, var(--border) 0 5px, transparent 5px 10px)",
           }}
         />
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-3">
           {timeline.map((card) => (
             <Link
               key={card.href}
               href={card.href}
-              className="pressable relative flex items-center gap-4 rounded-3xl border border-border/60 bg-surface p-4"
+              className="pressable relative flex items-center gap-4 rounded-3xl border border-border/60 bg-surface p-4 md:min-h-48 md:flex-col md:items-start md:p-5"
             >
               <span className="relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-background text-foreground/80">
                 {card.icon}
               </span>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 md:w-full">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="font-script text-2xl leading-none text-foreground/95">
                     {card.title}
@@ -187,7 +187,7 @@ export default function ReflectDashboard() {
                 </div>
                 <p className="mt-1.5 truncate text-[13px] text-muted">{card.preview}</p>
               </div>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 shrink-0 text-faint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 shrink-0 text-faint md:absolute md:bottom-5 md:right-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
               </svg>
             </Link>

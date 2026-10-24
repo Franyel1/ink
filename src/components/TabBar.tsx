@@ -87,7 +87,6 @@ export default function TabBar() {
         aria-label="Ink home"
       >
         <span className="font-script text-5xl leading-none">Ink.</span>
-        <span className="text-[10px] uppercase tracking-[0.22em] text-faint">private</span>
       </Link>
       <div className="mx-auto flex max-w-lg items-stretch justify-around md:mx-0 md:max-w-none md:flex-1 md:flex-col md:justify-start md:gap-1">
         {TABS.map((tab) => {

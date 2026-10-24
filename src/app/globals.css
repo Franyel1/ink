@@ -280,6 +280,7 @@ input,
 
   .desktop-app {
     max-width: 1800px;
+    height: 100dvh;
     margin-inline: auto;
   }
 
@@ -289,6 +290,7 @@ input,
 
   .desktop-canvas {
     width: min(100%, 1120px);
+    min-height: calc(100dvh - 40px);
     margin-inline: auto;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -329,6 +331,18 @@ input,
   .desktop-canvas article:hover {
     border-color: rgba(255, 255, 255, 0.05);
     background: rgba(255, 255, 255, 0.018);
+  }
+
+  .desktop-canvas .post-image-frame {
+    width: min(100%, 480px);
+  }
+
+  .desktop-canvas .post-image-frame:only-child {
+    margin-inline: auto;
+  }
+
+  .route-loading {
+    animation: fade-in 180ms ease both;
   }
 
   .pressable:hover {

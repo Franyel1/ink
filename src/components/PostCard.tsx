@@ -247,7 +247,7 @@ export default function PostCard({
         {post.post_images.map((img) => (
           <div
             key={img.id}
-            className={`relative shrink-0 snap-center overflow-hidden bg-surface ${
+            className={`post-image-frame relative shrink-0 snap-center overflow-hidden bg-surface ${
               post.post_images.length > 1 ? "w-[88%] first:ml-0" : "w-full"
             } aspect-[4/5]`}
           >

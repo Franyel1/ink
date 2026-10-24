@@ -99,7 +99,9 @@ export default function TabBar() {
               className={`pressable group flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-0.5 transition-colors md:flex-none md:flex-row md:gap-3 md:rounded-2xl md:px-3 md:py-3 ${
                 tab.desktopOnly ? "hidden md:flex" : ""
               } ${
-                active ? "text-foreground" : "text-faint"
+                active
+                  ? "text-foreground md:bg-surface-raised"
+                  : "text-faint md:hover:bg-surface-raised/70 md:hover:text-foreground"
               }`}
             >
               <span className="relative">

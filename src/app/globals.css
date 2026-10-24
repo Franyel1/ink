@@ -279,16 +279,16 @@ input,
   }
 
   .desktop-app {
-    max-width: 1600px;
+    max-width: 1800px;
     margin-inline: auto;
   }
 
   .desktop-main {
-    padding: 24px clamp(24px, 5vw, 72px);
+    padding: 20px clamp(24px, 4vw, 64px);
   }
 
   .desktop-canvas {
-    width: min(100%, 920px);
+    width: min(100%, 1120px);
     margin-inline: auto;
     overflow: hidden;
     border: 1px solid var(--border);

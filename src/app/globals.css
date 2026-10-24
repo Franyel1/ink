@@ -342,6 +342,13 @@ input,
     margin-inline: auto;
   }
 
+  .desktop-canvas .desktop-feed-header,
+  .desktop-canvas .desktop-feed-content,
+  .desktop-canvas .route-loading {
+    width: min(100%, 900px);
+    margin-inline: auto;
+  }
+
   .route-loading {
     animation: fade-in 180ms ease both;
   }

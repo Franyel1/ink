@@ -223,8 +223,11 @@ export default function FeedScreen() {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Top bar */}
-      <header className="flex shrink-0 items-center justify-between px-5 pb-2 pt-[calc(var(--safe-top)+0.75rem)]">
-        <h1 className="font-script text-4xl leading-none">Ink.</h1>
+      <header className="desktop-feed-header flex shrink-0 items-center justify-between px-5 pb-2 pt-[calc(var(--safe-top)+0.75rem)]">
+        <h1 className="leading-none">
+          <span className="font-script text-4xl md:hidden">Ink.</span>
+          <span className="hidden text-xl font-medium tracking-tight md:inline">Feed</span>
+        </h1>
         <Link href="/sync" className="ml-auto mr-4 text-xs text-muted underline">Sync{drafts.length ? ` · ${drafts.length}` : ""}</Link>
         <button
           type="button"
@@ -254,7 +257,7 @@ export default function FeedScreen() {
         </div>
 
         <div
-          className="relative bg-background"
+          className="desktop-feed-content relative bg-background"
           style={{
             // Only set a transform while it's actually needed: any transform,
             // even translateY(0), makes this the containing block for

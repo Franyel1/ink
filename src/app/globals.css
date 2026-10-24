@@ -289,9 +289,10 @@ input,
   }
 
   .desktop-canvas {
-    width: min(100%, 1120px);
+    width: 100%;
+    max-width: none;
     min-height: calc(100dvh - 40px);
-    margin-inline: auto;
+    margin-inline: 0;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 28px;

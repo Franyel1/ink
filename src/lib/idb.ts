@@ -52,7 +52,11 @@ function run<T>(
       new Promise<T>((resolve, reject) => {
         const tx = db.transaction(store, mode);
         const request = work(tx.objectStore(store));
-        request.onsuccess = () => resolve(request.result);
+        // A successful request can still belong to a transaction that aborts.
+        // Only acknowledge a durable draft after the transaction commits.
+        tx.oncomplete = () => resolve(request.result);
+        tx.onabort = () => reject(tx.error ?? new Error("Local save aborted"));
+        tx.onerror = () => reject(tx.error);
         request.onerror = () => reject(request.error);
       })
   );
@@ -74,6 +78,19 @@ export function idbPut(store: string, value: unknown, key?: string) {
 
 export function idbDelete(store: string, key: string) {
   return run(store, "readwrite", (s) => s.delete(key));
+}
+
+/** Replace a resolved operation atomically: a crash must leave exactly one copy. */
+export async function idbReplace(store: string, oldKey: string, value: unknown): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, "readwrite");
+    tx.objectStore(store).put(value);
+    tx.objectStore(store).delete(oldKey);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error("Local save aborted"));
+  });
 }
 
 /** True when IndexedDB is usable at all — it isn't during SSR. */

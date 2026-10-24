@@ -5,8 +5,8 @@ import { createPortal } from "react-dom";
 import Image from "next/image";
 import type { Post, PostType, Tag } from "@/lib/types";
 import { POST_TYPES } from "@/lib/types";
-import { createPost, updatePost, createTag, type PostInput } from "@/lib/posts";
-import { isOffline, queueDraft } from "@/lib/offline";
+import { createTag, type PostInput } from "@/lib/posts";
+import { flushDrafts, queueDraft } from "@/lib/offline";
 import { useKeyboardInset } from "@/lib/useKeyboardInset";
 import { useSpeechToText } from "@/lib/useSpeechToText";
 import Avatar from "@/components/Avatar";
@@ -125,27 +125,15 @@ export default function Composer({
       quotedPostId: editing ? null : quoting?.id ?? null,
     };
     try {
-      const post = editing
-        ? await updatePost(editing.id, input)
-        : await createPost(input);
-      files.forEach((f) => URL.revokeObjectURL(f.url));
-      onSaved(post, !!editing);
-    } catch {
-      // A new post can wait on the doorstep until there's a network. An edit
-      // can't — replaying it later would clobber whatever the post looks like
-      // by then — so that one has to be retried by hand.
-      if (!editing && isOffline()) {
-        try {
-          await queueDraft(input);
-          files.forEach((f) => URL.revokeObjectURL(f.url));
-          onQueued();
-          return;
-        } catch {
-          setError("No signal, and nowhere to keep this. Try again.");
-        }
-      } else {
-        setError("Something didn't stick. Try again.");
-      }
+      // Persist before attempting the network, including apparently-online failures.
+      const draft = await queueDraft(input, editing);
+      const saved = await flushDrafts().catch(() => []);
+      const post = saved.find(p => p.id === draft.postId);
+      files.forEach(f => URL.revokeObjectURL(f.url));
+      if (post) onSaved(post, !!editing);
+      else onQueued();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't keep this writing on the device. Please try again.");
     } finally {
       setBusy(false);
     }

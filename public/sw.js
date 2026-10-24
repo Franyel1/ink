@@ -8,7 +8,7 @@
  * for longer than one navigation.
  */
 
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const SHELL_CACHE = `ink-shell-${CACHE_VERSION}`;
 const ASSET_CACHE = `ink-assets-${CACHE_VERSION}`;
 const IMAGE_CACHE = `ink-images-${CACHE_VERSION}`;
@@ -46,7 +46,7 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys.filter((key) => !keep.includes(key)).map((key) => caches.delete(key))
+          keys.filter((key) => key.startsWith("ink-") && !keep.includes(key)).map((key) => caches.delete(key))
         )
       )
       .then(() => self.clients.claim())

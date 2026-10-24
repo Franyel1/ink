@@ -17,7 +17,7 @@ import type { PostMatch } from "@/lib/embeddings";
  * result to GenericStringError.
  */
 export const POST_SELECT =
-  "id, user_id, content, post_type, is_pinned, created_at, updated_at, ai_processed, ai_comment, ai_summary, ai_sentiment, ai_topics, quoted_post_id, post_images(*), post_tags(tag_id, tags(*)), post_people(person_id, people(id, name)), quoted_post:quoted_post_id(id, content, post_type, created_at, post_images(image_url))";
+  "id, revision, user_id, content, post_type, is_pinned, created_at, updated_at, ai_processed, ai_comment, ai_summary, ai_sentiment, ai_topics, quoted_post_id, post_images(*), post_tags(tag_id, tags(*)), post_people(person_id, people(id, name)), quoted_post:quoted_post_id(id, content, post_type, created_at, post_images(image_url))";
 
 /**
  * PostgREST returns the `quoted_post` embed as a single object, since it's a
@@ -87,122 +87,61 @@ export async function fetchTags(): Promise<Tag[]> {
   return (data ?? []) as Tag[];
 }
 
-async function uploadImages(userId: string, files: File[]): Promise<string[]> {
-  const supabase = createClient();
-  const urls: string[] = [];
-  for (const file of files) {
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `${userId}/${crypto.randomUUID()}.${ext}`;
-    const { error } = await supabase.storage
-      .from("post-images")
-      .upload(path, file, { contentType: file.type || "image/jpeg" });
-    if (error) throw error;
-    const { data } = supabase.storage.from("post-images").getPublicUrl(path);
-    urls.push(data.publicUrl);
-  }
-  return urls;
-}
-
 export interface PostInput {
   content: string;
   postType: PostType;
   tagIds: string[];
   newFiles: File[];
-  /** Set only when writing a new post that quotes an older one. */
   quotedPostId?: string | null;
 }
 
-export async function createPost(input: PostInput): Promise<Post> {
+export class WriteConflict extends Error {
+  constructor(public readonly missing = false) {
+    super(missing ? "This entry was deleted. Save your writing as a new entry." : "This entry changed on another device.");
+  }
+}
+
+/** The operation ID and entry ID must survive every network retry. */
+export async function savePostOperation(input: PostInput, operation: {
+  id: string; postId: string; userId: string; baseRevision: number | null; createdAt: string;
+}): Promise<Post> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-
-  const { data: post, error } = await supabase
-    .from("posts")
-    .insert({
-      user_id: user.id,
-      content: input.content,
-      post_type: input.postType,
-      quoted_post_id: input.quotedPostId ?? null,
-    })
-    .select("id")
-    .single();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || user.id !== operation.userId) throw new Error("Sign in to the account that wrote this entry.");
+  // A lost response must not repeat image uploads or resurrect a deleted post.
+  const { data: receipt, error: receiptError } = await supabase.from("post_operations")
+    .select("post_id").eq("user_id", user.id).eq("operation_id", operation.id).maybeSingle();
+  if (receiptError) throw receiptError;
+  if (receipt) {
+    if (!receipt.post_id) throw new WriteConflict(true);
+    return refetchPost(receipt.post_id);
+  }
+  const urls: string[] = [];
+  for (const [index, file] of input.newFiles.entries()) {
+    // Immutable per-operation paths also make storage retries idempotent.
+    const path = `${user.id}/${operation.id}/${index}`;
+    const { error } = await supabase.storage.from("post-images")
+      .upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+    if (error && !("statusCode" in error && String(error.statusCode) === "409")) throw error;
+    urls.push(supabase.storage.from("post-images").getPublicUrl(path).data.publicUrl);
+  }
+  const { data, error } = await supabase.rpc("save_entry", {
+    operation_id: operation.id, entry_id: operation.postId,
+    expected_revision: operation.baseRevision, body: input.content, kind: input.postType,
+    tags: input.tagIds, images: urls, quoted_id: input.quotedPostId ?? null,
+    written_at: operation.createdAt, expected_user: operation.userId,
+  });
   if (error) throw error;
-
-  if (input.newFiles.length > 0) {
-    const urls = await uploadImages(user.id, input.newFiles);
-    const { error: imgError } = await supabase
-      .from("post_images")
-      .insert(urls.map((url) => ({ post_id: post.id, image_url: url })));
-    if (imgError) throw imgError;
-  }
-
-  if (input.tagIds.length > 0) {
-    const { error: tagError } = await supabase
-      .from("post_tags")
-      .insert(input.tagIds.map((tagId) => ({ post_id: post.id, tag_id: tagId })));
-    if (tagError) throw tagError;
-  }
-
-  // Hand the post to the AI layer in the background; posting never waits on it.
-  // Embedding is chained after analysis rather than fired alongside it, so the
-  // vector covers the summary and topics the analysis produces, not just the
-  // raw text. If analysis fails the post stays queued and the next drain
-  // embeds whatever text it does have.
+  if (data.status !== "saved") throw new WriteConflict(data.status === "missing");
+  // Preserve the existing optional analysis pipeline. New features do not need it.
   void fetch("/api/posts/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ postId: post.id }),
-  })
-    .catch(() => {})
-    .finally(() => embedPending());
-
-  return refetchPost(post.id);
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ postId: data.id }),
+  }).catch(() => {}).finally(() => embedPending());
+  return refetchPost(data.id);
 }
 
-export async function updatePost(
-  postId: string,
-  input: PostInput
-): Promise<Post> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-
-  const { error } = await supabase
-    .from("posts")
-    .update({
-      content: input.content,
-      post_type: input.postType,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", postId);
-  if (error) throw error;
-
-  if (input.newFiles.length > 0) {
-    const urls = await uploadImages(user.id, input.newFiles);
-    const { error: imgError } = await supabase
-      .from("post_images")
-      .insert(urls.map((url) => ({ post_id: postId, image_url: url })));
-    if (imgError) throw imgError;
-  }
-
-  // Reset tags to the current selection
-  await supabase.from("post_tags").delete().eq("post_id", postId);
-  if (input.tagIds.length > 0) {
-    const { error: tagError } = await supabase
-      .from("post_tags")
-      .insert(input.tagIds.map((tagId) => ({ post_id: postId, tag_id: tagId })));
-    if (tagError) throw tagError;
-  }
-
-  return refetchPost(postId);
-}
-
-async function refetchPost(postId: string): Promise<Post> {
+export async function refetchPost(postId: string): Promise<Post> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("posts")

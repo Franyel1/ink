@@ -12,6 +12,8 @@ const SIGNED_OUT_ONLY_PATHS = ["/login"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
+  // The fictional demo is entirely local and must work without backend credentials.
+  if (request.nextUrl.pathname === "/demo" || request.nextUrl.pathname.startsWith("/demo/")) return response;
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -43,6 +45,7 @@ export async function proxy(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   if (!user && !isPublic) {
+    if (pathname.startsWith("/api/")) return NextResponse.json({error:"unauthorized"},{status:401});
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

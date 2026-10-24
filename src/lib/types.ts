@@ -77,6 +77,7 @@ export interface QuotedPost {
 }
 
 export interface Post {
+  revision?: number;
   id: string;
   user_id: string;
   content: string;

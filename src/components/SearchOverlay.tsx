@@ -1,263 +1,114 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Post, PostType, Tag } from "@/lib/types";
-import { POST_TYPES } from "@/lib/types";
-import { searchByMeaning } from "@/lib/posts";
-import PostCard, { type PostAuthor } from "@/components/PostCard";
+import {useEffect,useRef,useState} from "react";
+import Link from "next/link";
+import type {Post,Tag} from "@/lib/types";
+import {POST_TYPES} from "@/lib/types";
+import {searchNotebook,SEARCH_PAGE_SIZE,type SearchFilters} from "@/lib/notebook";
+import {createClient} from "@/lib/supabase/client";
+import {readCachedFeed} from "@/lib/offline";
+import type {PostAuthor} from "@/components/PostCard";
 
 interface Props {
-  open: boolean;
-  posts: Post[];
-  tags: Tag[];
-  author: PostAuthor;
-  onClose: () => void;
-  onEdit: (post: Post) => void;
-  onDelete: (post: Post) => void;
-  onTogglePin: (post: Post) => void;
-  onQuote?: (post: Post) => void;
+  open:boolean; posts:Post[]; tags:Tag[]; author:PostAuthor;
+  onClose:()=>void; onEdit:(post:Post)=>void; onDelete:(post:Post)=>void;
+  onTogglePin:(post:Post)=>void; onQuote?:(post:Post)=>void;
 }
+export default function SearchOverlay({open,posts,tags,onClose}:Props) {
+  const [filters,setFilters]=useState<SearchFilters>({query:""});
+  const [results,setResults]=useState<Post[]>([]);
+  const [people,setPeople]=useState<{id:string;name:string}[]>([]);
+  const [busy,setBusy]=useState(false);
+  const [hasMore,setHasMore]=useState(false);
+  const [notice,setNotice]=useState("");
+  const [error,setError]=useState("");
+  const [retry,setRetry]=useState(0);
+  const run=useRef(0);
+  const offset=useRef(0);
 
-export default function SearchOverlay({
-  open,
-  posts,
-  tags,
-  author,
-  onClose,
-  onEdit,
-  onDelete,
-  onTogglePin,
-  onQuote,
-}: Props) {
-  const [query, setQuery] = useState("");
-  const [type, setType] = useState<PostType | null>(null);
-  const [tagId, setTagId] = useState<string | null>(null);
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-  /**
-   * The last completed meaning search, tagged with the query it was for.
-   * Tagging rather than clearing on every keystroke is what keeps this out of
-   * an effect: a stale result is simply ignored once the query moves on.
-   */
-  const [semantic, setSemantic] = useState<{
-    forQuery: string;
-    map: Map<string, number>;
-  } | null>(null);
-  const [searchingFor, setSearchingFor] = useState<string | null>(null);
-
-  // Debounced, since every keystroke would otherwise be an embedding call.
-  // Versioned so a slow early response can't overwrite a later one.
-  const searchRun = useRef(0);
-  useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) return;
-    const run = ++searchRun.current;
-    const timer = setTimeout(() => {
-      setSearchingFor(q);
-      searchByMeaning(q)
-        .then((matches) => {
-          if (run !== searchRun.current) return;
-          if (matches) {
-            setSemantic({
-              forQuery: q,
-              map: new Map(matches.map((m) => [m.id, m.similarity])),
-            });
-          }
-        })
-        .finally(() => {
-          if (run === searchRun.current) setSearchingFor(null);
-        });
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  const trimmed = query.trim();
-  const meaning = semantic?.forQuery === trimmed ? semantic.map : null;
-  const searching = searchingFor !== null && searchingFor === trimmed;
-
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matched = posts.filter((post) => {
-      // A literal match always counts, so searching an exact phrase you
-      // remember writing never loses to a similarity threshold. Meaning
-      // matches widen that set rather than replacing it.
-      if (q) {
-        const literal = post.content.toLowerCase().includes(q);
-        if (!literal && !meaning?.has(post.id)) return false;
-      }
-      if (type && post.post_type !== type) return false;
-      if (tagId && !post.post_tags.some((pt) => pt.tag_id === tagId))
-        return false;
-      if (from && new Date(post.created_at) < new Date(from)) return false;
-      if (to) {
-        const end = new Date(to);
-        end.setDate(end.getDate() + 1);
-        if (new Date(post.created_at) >= end) return false;
-      }
-      return true;
+  useEffect(()=>{
+    if (!open) return;
+    let stale=false;
+    void createClient().from("people").select("id,name").order("name").then(({data})=>{
+      if (!stale) setPeople(data??[]);
     });
-
-    if (!q) return matched;
-    // Literal hits first, then by closeness of meaning, then newest.
-    return [...matched].sort((a, b) => {
-      const aLiteral = a.content.toLowerCase().includes(q) ? 1 : 0;
-      const bLiteral = b.content.toLowerCase().includes(q) ? 1 : 0;
-      if (aLiteral !== bLiteral) return bLiteral - aLiteral;
-      const aScore = meaning?.get(a.id) ?? 0;
-      const bScore = meaning?.get(b.id) ?? 0;
-      if (aScore !== bScore) return bScore - aScore;
-      return b.created_at.localeCompare(a.created_at);
-    });
-  }, [posts, query, type, tagId, from, to, meaning]);
-
-  /** Results found only by meaning, worth saying so the list doesn't look wrong. */
-  const meaningOnly = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q || !meaning) return 0;
-    return results.filter((p) => !p.content.toLowerCase().includes(q)).length;
-  }, [results, query, meaning]);
-
-  if (!open) return null;
-
-  const hasFilter = type || tagId || from || to;
-
-  return (
-    <div className="fade-in absolute inset-0 z-40 flex flex-col bg-background">
-      <div className="shrink-0 px-5 pt-[calc(var(--safe-top)+0.75rem)]">
-        <div className="flex items-center gap-3">
-          <div className="write-line flex flex-1 items-center gap-2 pb-2">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 shrink-0 text-faint">
-              <circle cx="11" cy="11" r="7" />
-              <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
-            </svg>
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search your ink…"
-              className="ink-input w-full"
-            />
-          </div>
-          <button type="button" onClick={onClose} className="pb-2 text-sm text-muted">
-            Done
-          </button>
+    return ()=>{stale=true;};
+  },[open]);
+  useEffect(()=>{
+    const request=++run.current;
+    if (!open) return;
+    const timer=setTimeout(async ()=>{
+      setBusy(true);setError("");setNotice("");setHasMore(false);setResults([]);offset.current=0;
+      try {
+        const result=await searchNotebook(filters);
+        if(request!==run.current)return;
+        setResults(result.posts);setHasMore(result.hasMore);offset.current=SEARCH_PAGE_SIZE;
+        if(result.meaningUnavailable)setNotice("Meaning search is unavailable. Showing keyword matches.");
+      }catch{
+        const cache=await readCachedFeed();
+        if(request!==run.current)return;
+        if(!navigator.onLine){
+          const q=filters.query.trim().toLowerCase();
+          const start=filters.from ? new Date(`${filters.from}T00:00:00`).getTime() : -Infinity;
+          const end=filters.to ? new Date(`${filters.to}T00:00:00`) : null;
+          if(end)end.setDate(end.getDate()+1);
+          setResults((cache?.posts??posts).filter(p=>(!q||p.content.toLowerCase().includes(q))
+            &&(!filters.type||p.post_type===filters.type)
+            &&(!filters.tagId||p.post_tags.some(t=>t.tag_id===filters.tagId))
+            &&(!filters.personId||p.post_people?.some(t=>t.person_id===filters.personId))
+            &&new Date(p.created_at).getTime()>=start&&(!end||new Date(p.created_at)<end)));
+          setNotice("Offline. Searching only entries saved on this device.");
+        }else setError("Couldn't search your notebook. Please retry.");
+      }finally{if(request===run.current)setBusy(false);}
+    },250);
+    return ()=>{clearTimeout(timer);run.current=request+1;};
+  },[open,filters,posts,retry]);
+  async function more(){
+    const request=run.current;setBusy(true);
+    try{
+      const result=await searchNotebook(filters,offset.current);
+      if(request!==run.current)return;
+      setResults(all=>[...all,...result.posts.filter(p=>!all.some(a=>a.id===p.id))]);
+      setHasMore(result.hasMore);offset.current+=SEARCH_PAGE_SIZE;
+    }catch{if(request===run.current)setError("Couldn't load more. Please retry.");}
+    finally{if(request===run.current)setBusy(false);}
+  }
+  if(!open)return null;
+  const change=(key:keyof SearchFilters,value:string|boolean)=>setFilters(f=>({...f,[key]:value}));
+  return <section aria-label="Search notebook" className="absolute inset-0 z-40 flex flex-col bg-background">
+    <header className="shrink-0 px-5 pb-4 pt-[calc(var(--safe-top)+1rem)]">
+      <div className="flex items-center gap-4">
+        <input autoFocus aria-label="Search your entire notebook" placeholder="Search your entire notebook…" value={filters.query}
+          onChange={e=>change("query",e.target.value)} className="ink-input write-line min-w-0 flex-1 pb-2"/>
+        <button onClick={onClose} className="text-sm text-muted">Done</button>
+      </div>
+      <details className="mt-4 text-sm text-muted">
+        <summary className="cursor-pointer">Refine your search</summary>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <label>Type<select aria-label="Entry type" value={filters.type??""} onChange={e=>change("type",e.target.value)} className="mt-1 block w-full bg-background py-2">
+            <option value="">Any type</option>{POST_TYPES.map(t=><option key={t}>{t}</option>)}</select></label>
+          <label>Tag<select aria-label="Tag" value={filters.tagId??""} onChange={e=>change("tagId",e.target.value)} className="mt-1 block w-full bg-background py-2">
+            <option value="">Any tag</option>{tags.map(t=><option value={t.id} key={t.id}>{t.name}</option>)}</select></label>
+          <label>Person<select aria-label="Person" value={filters.personId??""} onChange={e=>change("personId",e.target.value)} className="mt-1 block w-full bg-background py-2">
+            <option value="">Anyone</option>{people.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={!!filters.meaning} onChange={e=>change("meaning",e.target.checked)}/>Include meaning matches</label>
+          <label>From<input type="date" value={filters.from??""} onChange={e=>change("from",e.target.value)} className="ink-input mt-2 w-full"/></label>
+          <label>Through<input type="date" value={filters.to??""} onChange={e=>change("to",e.target.value)} className="ink-input mt-2 w-full"/></label>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setShowFilters((v) => !v)}
-          className={`mt-3 text-xs uppercase tracking-widest ${
-            hasFilter ? "text-foreground" : "text-faint"
-          }`}
-        >
-          Filters {hasFilter ? "· on" : ""}
-        </button>
-
-        {showFilters && (
-          <div className="fade-in mt-3 border-b border-border/60 pb-4">
-            <div className="scroll-x -mx-5 flex gap-2 px-5">
-              {POST_TYPES.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setType(type === t ? null : t)}
-                  className={`shrink-0 rounded-full border px-3.5 py-1 text-sm capitalize ${
-                    type === t
-                      ? "border-foreground bg-foreground text-ink"
-                      : "border-border text-muted"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-            {tags.length > 0 && (
-              <div className="scroll-x -mx-5 mt-2 flex gap-2 px-5">
-                {tags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() => setTagId(tagId === tag.id ? null : tag.id)}
-                    className={`shrink-0 rounded-full border px-3.5 py-1 text-sm ${
-                      tagId === tag.id
-                        ? "border-foreground bg-foreground text-ink"
-                        : "border-border text-muted"
-                    }`}
-                  >
-                    {tag.name}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="mt-3 flex items-center gap-3 text-sm text-muted">
-              <label className="write-line flex items-center gap-2 pb-1">
-                <span className="text-xs text-faint">From</span>
-                <input
-                  type="date"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
-                  className="ink-input text-sm"
-                />
-              </label>
-              <label className="write-line flex items-center gap-2 pb-1">
-                <span className="text-xs text-faint">To</span>
-                <input
-                  type="date"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  className="ink-input text-sm"
-                />
-              </label>
-              {hasFilter && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setType(null);
-                    setTagId(null);
-                    setFrom("");
-                    setTo("");
-                  }}
-                  className="text-xs text-faint underline"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="scroll-area flex-1 pb-6">
-        {meaningOnly > 0 && (
-          <p className="px-5 pt-3 text-xs text-faint">
-            {meaningOnly === results.length
-              ? "Nothing matched those words, so these are the closest in meaning."
-              : `Including ${meaningOnly} that don't use those words but are close in meaning.`}
-          </p>
-        )}
-        {results.length === 0 ? (
-          <p className="mt-16 text-center text-sm text-faint">
-            {searching
-              ? "Looking…"
-              : query || hasFilter
-                ? "Nothing found in your ink."
-                : "Type to search."}
-          </p>
-        ) : (
-          results.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              author={author}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onTogglePin={onTogglePin}
-              onQuote={onQuote}
-            />
-          ))
-        )}
-      </div>
+        <button onClick={()=>setFilters({query:filters.query})} className="mt-4 underline">Clear filters</button>
+      </details>
+    </header>
+    <div className="scroll-area flex-1 px-5 pb-10" aria-live="polite" aria-busy={busy}>
+      {notice&&<p className="mb-4 text-sm text-muted">{notice}</p>}
+      {error&&<p role="alert" className="my-4 text-sm">{error} <button className="underline" onClick={()=>setRetry(n=>n+1)}>Retry search</button></p>}
+      {results.map(p=><Link key={p.id} href={`/post/${p.id}`} className="block border-b border-border py-5">
+        <p className="text-xs text-faint">{new Date(p.created_at).toLocaleDateString()} · {p.post_type}</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{p.content}</p>
+        <span className="mt-3 block text-xs text-muted">Open entry & memory thread →</span>
+      </Link>)}
+      {busy&&<p className="py-8 text-sm text-faint">Searching…</p>}
+      {!busy&&!error&&results.length===0&&<p className="py-8 text-sm text-faint">No entries match. Try fewer words or clear a filter.</p>}
+      {hasMore&&<button disabled={busy} onClick={()=>void more()} className="mt-6 text-sm underline disabled:opacity-40">Load more matches</button>}
     </div>
-  );
+  </section>;
 }

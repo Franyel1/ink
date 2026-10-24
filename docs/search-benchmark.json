@@ -1,0 +1,16 @@
+{
+  "measuredAt": "2026-10-23T23:12:40.624Z",
+  "runtime": "v24.16.0",
+  "platform": "win32",
+  "database": "PGlite 0.5.8, in-memory PostgreSQL; actual search_notebook SQL and RLS",
+  "entries": 5000,
+  "queries": 8,
+  "runsPerQuery": 10,
+  "expectedEntryInTop5": {
+    "hits": 8,
+    "total": 8
+  },
+  "medianMs": 4.59,
+  "p95Ms": 5.3,
+  "limits": "Synthetic single-user keyword queries after warmup. SQL only; excludes network, result hydration, embedding calls, and production concurrency. No production latency or semantic quality claim."
+}

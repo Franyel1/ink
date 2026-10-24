@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import SyncCoordinator from "@/components/SyncCoordinator";
 import TabBar from "@/components/TabBar";
 
 export default async function TabsLayout({
@@ -21,6 +22,7 @@ export default async function TabsLayout({
 
   return (
     <div className="desktop-app flex h-full min-h-0 flex-col md:flex-row">
+      <SyncCoordinator />
       <TabBar />
       <main className="desktop-main relative flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="desktop-canvas relative flex min-h-0 flex-1 flex-col">

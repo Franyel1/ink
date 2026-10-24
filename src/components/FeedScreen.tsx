@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { Post, Tag } from "@/lib/types";
 import { fetchPosts, fetchTags, deletePost, setPinned } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
 import {
   cacheFeed,
+  QUEUE_EVENT,
+  SYNC_EVENT,
+  retryDraft,
   discardDraft,
   flushDrafts,
   readCachedFeed,
@@ -52,7 +56,7 @@ export default function FeedScreen() {
         .maybeSingle();
       return data;
     });
-    setDrafts(await readDrafts());
+    setDrafts(await readDrafts().catch(() => []));
     try {
       const [p, t, prof] = await Promise.all([
         fetchPosts(FEED_PAGE_SIZE),
@@ -147,14 +151,24 @@ export default function FeedScreen() {
     async function send() {
       if (typeof navigator !== "undefined" && !navigator.onLine) return;
       if ((await readDrafts()).length === 0) return;
+      for (const draft of await readDrafts()) {
+        if (draft.state === "error") await retryDraft(draft);
+      }
       await flushDrafts();
       if (!cancelled) await loadFeed();
     }
-    void send();
-    window.addEventListener("online", send);
+    void send().catch(() => {});
+    const onOnline = () => void send().catch(() => {});
+    const onQueue = () => void readDrafts().then(setDrafts).catch(() => {});
+    window.addEventListener("online", onOnline);
+    window.addEventListener(QUEUE_EVENT, onQueue);
+    const onSynced = () => void loadFeed();
+    window.addEventListener(SYNC_EVENT, onSynced);
     return () => {
       cancelled = true;
-      window.removeEventListener("online", send);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener(QUEUE_EVENT, onQueue);
+      window.removeEventListener(SYNC_EVENT, onSynced);
     };
   }, [loadFeed]);
 
@@ -211,6 +225,7 @@ export default function FeedScreen() {
       {/* Top bar */}
       <header className="flex shrink-0 items-center justify-between px-5 pb-2 pt-[calc(var(--safe-top)+0.75rem)]">
         <h1 className="font-script text-4xl leading-none">Ink.</h1>
+        <Link href="/sync" className="ml-auto mr-4 text-xs text-muted underline">Sync{drafts.length ? ` · ${drafts.length}` : ""}</Link>
         <button
           type="button"
           aria-label="Search"
@@ -275,11 +290,13 @@ export default function FeedScreen() {
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] uppercase tracking-[0.15em] text-faint">
-                  Waiting for signal
+                  {draft.state === "conflict" ? "An edit needs your choice" : draft.state === "error" ? "Saved here · retry needed" : "Saved here · waiting to sync"}
                 </p>
+                <Link href="/sync" className="text-xs underline">Review</Link>
                 <button
                   type="button"
                   onClick={async () => {
+                    if (!window.confirm("Discard this unsynced writing?")) return;
                     await discardDraft(draft.id);
                     setDrafts((all) => all.filter((d) => d.id !== draft.id));
                   }}

@@ -1,5 +1,6 @@
 -- Ink. — Supabase schema
 -- Run this in the Supabase SQL editor (Dashboard → SQL Editor → New query).
+-- Then run migrations/013_notebook_depth.sql for search, threads and versioned sync.
 
 create extension if not exists vector;
 

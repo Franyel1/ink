@@ -1,165 +1,147 @@
 "use client";
 
 import type { Post, PostType, Tag } from "@/lib/types";
-import { createPost, type PostInput } from "@/lib/posts";
-import {
-  CACHE,
-  DRAFTS,
-  idbAvailable,
-  idbDelete,
-  idbGet,
-  idbGetAll,
-  idbPut,
-} from "@/lib/idb";
+import { savePostOperation, WriteConflict, type PostInput } from "@/lib/posts";
+import { createClient } from "@/lib/supabase/client";
+import { drainQueue } from "@/lib/sync-core";
+import { CACHE, DRAFTS, idbAvailable, idbDelete, idbGet, idbGetAll, idbPut, idbReplace } from "@/lib/idb";
 
-/** A post written while offline, waiting for a network to send it on. */
 export interface QueuedDraft {
-  id: string;
-  content: string;
-  postType: PostType;
-  tagIds: string[];
-  files: File[];
-  createdAt: string;
-  /**
-   * Carried so a quote written with no signal still posts as a quote. Drafts
-   * saved before quoting existed simply don't have it.
-   */
-  quotedPostId?: string | null;
+  id: string; userId: string; postId: string; baseRevision: number | null;
+  content: string; postType: PostType; tagIds: string[]; files: File[];
+  createdAt: string; quotedPostId?: string | null;
+  state: "pending" | "conflict" | "error"; error?: string;
+}
+interface CachedFeed { posts: Post[]; tags: Tag[]; savedAt: string }
+export const QUEUE_EVENT = "ink-queue-changed";
+export const SYNC_EVENT = "ink-synced";
+const changed = () => window.dispatchEvent(new Event(QUEUE_EVENT));
+const ACCOUNT_KEY = "active-account";
+
+export async function rememberAccount(userId: string | null): Promise<void> {
+  if (!idbAvailable()) return;
+  if (userId) await idbPut(CACHE,userId,ACCOUNT_KEY);
+  else await idbDelete(CACHE,ACCOUNT_KEY);
 }
 
-interface CachedFeed {
-  posts: Post[];
-  tags: Tag[];
-  savedAt: string;
+/** Local identity selects a cache; the server independently authorizes writes. */
+export async function localUserId(): Promise<string | null> {
+  // An expired offline session cannot refresh. Its last known local identity
+  // can still own a draft; it never authorizes a server request.
+  if (isOffline() && idbAvailable()) {
+    const remembered = await idbGet<string>(CACHE,ACCOUNT_KEY);
+    if (remembered) return remembered;
+  }
+  const { data: { session },error } = await createClient().auth.getSession();
+  if (error?.name === "AuthRetryableFetchError" && idbAvailable()) {
+    return await idbGet<string>(CACHE,ACCOUNT_KEY) ?? null;
+  }
+  const userId = session?.user.id ?? null;
+  await rememberAccount(userId).catch(() => {});
+  return userId;
 }
-
-const FEED_KEY = "feed";
-
-/**
- * A failed write isn't proof of being offline — the request may have reached
- * Supabase and failed there, in which case queueing it would post it twice. Only
- * treat it as offline when the browser agrees the network is gone.
- */
 export function isOffline(): boolean {
-  return typeof navigator !== "undefined" && navigator.onLine === false;
+  return typeof navigator !== "undefined" && !navigator.onLine;
 }
-
-export async function queueDraft(input: PostInput): Promise<QueuedDraft> {
+export async function queueDraft(input: PostInput, editing?: Post | null): Promise<QueuedDraft> {
+  const userId = await localUserId();
+  if (!userId || (editing && editing.user_id !== userId)) throw new Error("Sign in to save this writing.");
+  if (editing && (await readDrafts()).some(d => d.postId === editing.id)) {
+    throw new Error("An edit to this entry is already waiting. Review it in Sync first.");
+  }
+  const id = crypto.randomUUID();
   const draft: QueuedDraft = {
-    id: crypto.randomUUID(),
-    content: input.content,
-    postType: input.postType,
-    tagIds: input.tagIds,
-    // Files are structured-cloneable, so the images ride along in IndexedDB.
-    files: input.newFiles,
-    createdAt: new Date().toISOString(),
-    quotedPostId: input.quotedPostId ?? null,
+    id,userId,postId:editing?.id ?? id,baseRevision:editing ? editing.revision ?? 1 : null,
+    content:input.content,postType:input.postType,tagIds:input.tagIds,files:input.newFiles,
+    createdAt:new Date().toISOString(),quotedPostId:input.quotedPostId ?? null,state:"pending",
   };
-  await idbPut(DRAFTS, draft);
+  await idbPut(DRAFTS,draft);
+  changed();
   return draft;
 }
-
 export async function readDrafts(): Promise<QueuedDraft[]> {
   if (!idbAvailable()) return [];
-  try {
-    const drafts = await idbGetAll<QueuedDraft>(DRAFTS);
-    return drafts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  } catch {
-    return [];
-  }
+  const userId = await localUserId();
+  if (!userId) return [];
+  return (await idbGetAll<QueuedDraft>(DRAFTS)).filter(d => d.userId === userId)
+    .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
 }
-
+// Old drafts have no owner. Never attribute or send them automatically.
+export async function readLegacyDrafts(): Promise<QueuedDraft[]> {
+  return (await idbGetAll<QueuedDraft>(DRAFTS)).filter(d => !d.userId);
+}
 export async function discardDraft(id: string): Promise<void> {
-  try {
-    await idbDelete(DRAFTS, id);
-  } catch {
-    /* nothing to do — the draft stays queued and retries later */
-  }
+  const draft = await idbGet<QueuedDraft>(DRAFTS,id);
+  if (draft?.userId && draft.userId !== await localUserId()) throw new Error("Different account");
+  await idbDelete(DRAFTS,id);
+  changed();
 }
-
-/**
- * Send every queued draft, oldest first so the feed ends up in the order things
- * were actually written. A draft is only dropped once it's safely posted; if one
- * fails we stop and leave the rest for the next attempt rather than reordering
- * them around a failure.
- */
-let flushing = false;
-
-export async function flushDrafts(): Promise<Post[]> {
-  // Mount and the `online` event can fire within a moment of each other. Two
-  // overlapping flushes would each read the same draft before either had
-  // deleted it, and post it twice.
-  if (flushing) return [];
-  flushing = true;
-  try {
-    const drafts = (await readDrafts()).reverse();
-    const posted: Post[] = [];
-    for (const draft of drafts) {
-      try {
-        const post = await createPost({
-          content: draft.content,
-          postType: draft.postType,
-          tagIds: draft.tagIds,
-          newFiles: draft.files,
-          quotedPostId: draft.quotedPostId ?? null,
-        });
-        await discardDraft(draft.id);
-        posted.push(post);
-      } catch {
-        break;
-      }
+export async function reviseDraft(draft: QueuedDraft,current: Post | null,content: string,asCopy = false) {
+  if (draft.userId !== await localUserId()) throw new Error("Different account");
+  // Changing an attempted payload requires a fresh operation ID.
+  const id = crypto.randomUUID();
+  await idbReplace(DRAFTS,draft.id,{...draft,id,content,state:"pending",error:undefined,
+    postId:asCopy ? id : draft.postId,baseRevision:asCopy ? null : current?.revision ?? draft.baseRevision,
+    quotedPostId:asCopy ? current?.id ?? null : draft.quotedPostId});
+  changed();
+}
+export async function retryDraft(draft: QueuedDraft) {
+  if (draft.userId !== await localUserId()) throw new Error("Different account");
+  await idbPut(DRAFTS,{...draft,state:"pending",error:undefined});
+  changed();
+}
+let activeFlush: Promise<Post[]> | null = null;
+export function flushDrafts(): Promise<Post[]> {
+  if (activeFlush) return activeFlush;
+  const flush = async () => {
+    if (isOffline()) return [];
+    const userId = await localUserId();
+    if (!userId) return [];
+    const posted = await drainQueue({userId,drafts:await readDrafts(),
+      send:d => savePostOperation({content:d.content,postType:d.postType,tagIds:d.tagIds,
+        newFiles:d.files,quotedPostId:d.quotedPostId},d),
+      remove:discardDraft,
+      fail:async (draft,error) => {
+        if (await localUserId() !== userId || !await idbGet(DRAFTS,draft.id)) return;
+        const message = error instanceof Error ? error.message :
+          typeof error === "object" && error && "message" in error ? String(error.message) : "Couldn't sync. Try again.";
+        await idbPut(DRAFTS,{...draft,state:error instanceof WriteConflict ? "conflict" : "error",error:message});
+      },
+    });
+    if (posted.length && await localUserId() === userId) {
+      const cached = await readCachedFeed();
+      const merged = new Map((cached?.posts ?? []).map(p => [p.id,p]));
+      posted.forEach(p => merged.set(p.id,p));
+      await cacheFeed([...merged.values()].sort((a,b) => b.created_at.localeCompare(a.created_at)),cached?.tags ?? []);
+      window.dispatchEvent(new Event(SYNC_EVENT));
     }
     return posted;
-  } finally {
-    flushing = false;
-  }
+  };
+  activeFlush = (async () => typeof navigator !== "undefined" && navigator.locks
+    ? await navigator.locks.request("ink-sync",flush) : await flush())().finally(() => {activeFlush = null; changed();});
+  return activeFlush;
 }
-
-export async function cacheFeed(posts: Post[], tags: Tag[]): Promise<void> {
-  if (!idbAvailable()) return;
-  try {
-    const payload: CachedFeed = {
-      posts,
-      tags,
-      savedAt: new Date().toISOString(),
-    };
-    await idbPut(CACHE, payload, FEED_KEY);
-  } catch {
-    /* a full disk shouldn't break posting */
-  }
+export async function cacheFeed(posts: Post[],tags: Tag[]): Promise<void> {
+  const userId = await localUserId();
+  if (!userId || posts.some(p => p.user_id !== userId)) return;
+  try {await idbPut(CACHE,{posts,tags,savedAt:new Date().toISOString()},`feed:${userId}`);} catch { /* optional cache */ }
 }
-
-/**
- * Wipe everything this device is holding on the signed-in user's behalf. Called
- * on sign-out: the cached feed is their writing, and a leftover draft would
- * otherwise flush into whichever account signs in next.
- */
+export async function readCachedFeed(): Promise<CachedFeed | null> {
+  const userId = await localUserId();
+  if (!userId) return null;
+  try {return await idbGet<CachedFeed>(CACHE,`feed:${userId}`) ?? null;} catch {return null;}
+}
 export async function clearOfflineData(): Promise<void> {
-  if (!idbAvailable()) return;
-  try {
+  if (idbAvailable()) {
+    const userId = await localUserId();
     const drafts = await idbGetAll<QueuedDraft>(DRAFTS);
-    await Promise.all(drafts.map((d) => idbDelete(DRAFTS, d.id)));
-    await idbDelete(CACHE, FEED_KEY);
-  } catch {
-    /* best effort */
+    await Promise.all(drafts.filter(d => d.userId === userId).map(d => idbDelete(DRAFTS,d.id)));
+    if (userId) await idbDelete(CACHE,`feed:${userId}`);
+    await idbDelete(CACHE,"feed");
+    await rememberAccount(null);
   }
   if (typeof caches !== "undefined") {
-    try {
-      const keys = await caches.keys();
-      await Promise.all(
-        keys.filter((k) => k.startsWith("ink-images-")).map((k) => caches.delete(k))
-      );
-    } catch {
-      /* best effort */
-    }
-  }
-}
-
-export async function readCachedFeed(): Promise<CachedFeed | null> {
-  if (!idbAvailable()) return null;
-  try {
-    return (await idbGet<CachedFeed>(CACHE, FEED_KEY)) ?? null;
-  } catch {
-    return null;
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k.startsWith("ink-images-") || k.startsWith("ink-shell-")).map(k => caches.delete(k)));
   }
 }

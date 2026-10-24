@@ -40,7 +40,7 @@ export async function POST() {
   // RLS scopes this to the caller's own posts.
   const { data: pending, error: fetchError } = await supabase
     .from("posts")
-    .select("id, content, ai_summary, ai_topics")
+    .select("id, revision, content, ai_summary, ai_topics")
     .not("ai_embedding_status", "in", SETTLED_STATUSES)
     .order("created_at", { ascending: false })
     .limit(BATCH_SIZE);
@@ -55,14 +55,9 @@ export async function POST() {
   // it sit in the queue forever getting re-fetched on every pass.
   const embeddable = pending.filter((p) => p.content?.trim());
   const empty = pending.filter((p) => !p.content?.trim());
-  if (empty.length > 0) {
-    await supabase
-      .from("posts")
-      .update({ ai_embedding_status: "skipped_empty" })
-      .in(
-        "id",
-        empty.map((p) => p.id)
-      );
+  for (const post of empty) {
+    await supabase.from("posts").update({ ai_embedding_status: "skipped_empty" })
+      .eq("id", post.id).eq("revision", post.revision);
   }
   if (embeddable.length === 0) {
     return NextResponse.json({ embedded: 0, skipped: empty.length });
@@ -91,14 +86,14 @@ export async function POST() {
     for (const [i, post] of embeddable.entries()) {
       const vector = response.data[i]?.embedding;
       if (!vector) continue;
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("posts")
         .update({
           ai_embedding: vector,
           ai_embedding_status: "processed",
         })
-        .eq("id", post.id);
-      if (!error) embedded += 1;
+        .eq("id", post.id).eq("revision", post.revision).select("id").maybeSingle();
+      if (!error && updated) embedded += 1;
     }
 
     const { count } = await supabase

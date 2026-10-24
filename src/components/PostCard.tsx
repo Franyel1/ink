@@ -69,6 +69,7 @@ export default function PostCard({
             className="fixed inset-0 z-10 cursor-default"
           />
           <div className="fade-in absolute right-0 top-7 z-20 w-44 overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-xl shadow-black/50">
+            <Link href={`/post/${post.id}`} className="block px-4 py-3 text-sm">Thread & history</Link>
             <button
               type="button"
               onClick={() => {

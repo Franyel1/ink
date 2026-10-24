@@ -7,6 +7,9 @@ import type { Post, Tag } from "@/lib/types";
 import { POST_SELECT, deletePost, fetchTags, normalizePost, setPinned } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
 import PostCard, { type PostAuthor } from "@/components/PostCard";
+import ThreadPanel from "@/components/ThreadPanel";
+import VersionHistory from "@/components/VersionHistory";
+import { readCachedFeed } from "@/lib/offline";
 import Composer from "@/components/Composer";
 
 /**
@@ -55,7 +58,10 @@ export default function PostScreen({ postId }: { postId: string }) {
       }
       setState("ready");
     } catch {
-      setState("error");
+      const cached = await readCachedFeed();
+      const local = cached?.posts.find(p => p.id === postId);
+      if (local) { setPost(local); setTags(cached!.tags); setState("ready"); }
+      else setState("error");
     }
   }, [postId]);
 
@@ -120,6 +126,11 @@ export default function PostScreen({ postId }: { postId: string }) {
         />
       )}
 
+      {state === "ready" && post && <>
+        <ThreadPanel key={post.id} post={post} />
+        <VersionHistory post={post} onRestored={setPost} />
+      </>}
+
       {(editing || quoting) && (
         <Composer
           key={editing ? `edit-${editing.id}` : `quote-${quoting?.id}`}
@@ -140,6 +151,7 @@ export default function PostScreen({ postId }: { postId: string }) {
             setQuoting(null);
           }}
           onQueued={() => {
+            router.push("/sync");
             setEditing(null);
             setQuoting(null);
           }}

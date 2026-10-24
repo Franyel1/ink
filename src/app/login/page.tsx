@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -58,6 +59,8 @@ export default function LoginPage() {
         <p className="mt-3 text-sm text-muted">
           A feed of your own life, and a notebook that reads it back.
         </p>
+
+        <Link href="/demo" className="mt-6 inline-block text-sm text-muted underline">Explore a fictional notebook →</Link>
 
         <form onSubmit={submit} className="mt-14 flex flex-col gap-8">
           <label className="write-line block pb-2">

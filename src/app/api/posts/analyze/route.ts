@@ -168,7 +168,7 @@ export async function POST(request: Request) {
         .from("posts")
         // One literal, not a concatenation: see the note on POST_SELECT.
         .select(
-          "id, content, post_type, ai_processed, quoted_post_id, post_images(image_url), quoted_post:quoted_post_id(content, post_type, created_at)"
+          "id, revision, content, post_type, ai_processed, quoted_post_id, post_images(image_url), quoted_post:quoted_post_id(content, post_type, created_at)"
         )
         .eq("id", postId)
         .maybeSingle(),
@@ -339,7 +339,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ skipped: "no analysis" });
     }
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("posts")
       .update({
         ai_processed: true,
@@ -349,8 +349,11 @@ export async function POST(request: Request) {
         ai_topics: analysis.topics,
         ai_embedding_status: "not_processed",
       })
-      .eq("id", post.id);
+      .eq("id", post.id)
+      .eq("revision", post.revision)
+      .select("id").maybeSingle();
     if (error) throw error;
+    if (!updated) return NextResponse.json({ skipped: "entry changed during analysis" });
 
     const existingByName = new Map(
       (people ?? []).map((p) => [p.name.toLowerCase(), p])
